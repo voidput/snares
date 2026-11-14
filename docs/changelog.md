@@ -1,0 +1,17 @@
+---
+title: Changelog
+tags: [changelog]
+updated: 2026-11-13
+---
+
+# Changelog
+
+## 2026-11-13 — First version of the snare planner
+
+Type: Added. Effort: L3.
+
+- Solver for multi-origin snare positions with corridor, coverage and room for error ([architecture](architecture.md)).
+- Route changes, approach lines, `/showlocation` position check, target timing, 2D/3D map, share links.
+- Data bake from sc-gamedata; Stanton, Pyro, Nyx.
+- GitHub Pages workflow.
+- Spec: [snare-planner](plans/specs/snare-planner.md).

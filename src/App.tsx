@@ -1,0 +1,1067 @@
+import { useEffect, useMemo, useRef, useState } from "react";
+
+import { LocationPicker } from "./components/LocationPicker";
+import { MapView, type MapHandle } from "./components/MapView";
+import { formatDistance, formatDuration, formatKm, formatPercent } from "./lib/format";
+import { speedAt, timeToReach } from "./lib/kinematics";
+import {
+  anchorWeights,
+  approaches,
+  ARRIVAL_SLACK,
+  arrivalOf,
+  bestCatches,
+  evaluateLeg,
+  monitoredAt,
+  scanTargets,
+  solvePlan,
+  weightOf,
+  spreadOf,
+  type Catch,
+  type SpreadMode,
+} from "./lib/plan";
+import { decodeState, DEFAULT_STATE, encodeState, type PlanState } from "./lib/share";
+import { parseShowLocation } from "./lib/showlocation";
+import type { Body, Universe } from "./lib/types";
+import { distance, dot, length, sub } from "./lib/vec";
+
+/** Shown on a first visit, so the page opens on a solved plan rather than a form. */
+const EXAMPLE: Partial<PlanState> = {
+  system: "Stanton",
+  originIds: ["Stanton1", "RR_HUR_L1", "RR_HUR_L2"],
+  destIds: ["RR_ARC_L1"],
+};
+
+const CATCH_ORDER: Body["kind"][] = ["planet", "city", "jump", "station", "lagrange", "moon", "surface", "other", "asteroid", "star"];
+
+/** How much the scout marks down a spot inside a monitored zone. */
+const WATCHED_PENALTY = 0.2;
+
+/** A fleeing ship's speed in m/s, for "how long until they reach safety". */
+const RUN_SPEED = 1000;
+
+const SPREADS: { label: string; value: SpreadMode }[] = [
+  { label: "Auto", value: "auto" },
+  { label: "Exact", value: "exact" },
+  { label: "20 km", value: 20_000 },
+  { label: "50 km", value: 50_000 },
+  { label: "100 km", value: 100_000 },
+];
+
+function initialState(): PlanState {
+  const hash = window.location.hash;
+  return hash.length > 1 ? decodeState(hash) : { ...DEFAULT_STATE, ...EXAMPLE };
+}
+
+export function App() {
+  const [universe, setUniverse] = useState<Universe>();
+  const [error, setError] = useState<string>();
+  const [state, setState] = useState<PlanState>(initialState);
+  const [locationText, setLocationText] = useState("");
+  const [startId, setStartId] = useState<string>();
+  const [approachIndex, setApproachIndex] = useState(0);
+  const [menu, setMenu] = useState<{ body: Body; x: number; y: number }>();
+  const [copied, setCopied] = useState<string>();
+  const [catches, setCatches] = useState<{ key: string; list: Catch[] }>();
+  const [allChips, setAllChips] = useState(false);
+  const [scan, setScan] = useState<{
+    key: string;
+    done: number;
+    total: number;
+    results: { destId: string; best: Catch; value: number; watched: boolean }[];
+  }>();
+  const scanRun = useRef(0);
+  const map = useRef<MapHandle>(null);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    fetch(`${import.meta.env.BASE_URL}data/universe.json`, { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error(`universe.json: HTTP ${res.status}`);
+        return res.json();
+      })
+      .then((data: Universe) => setUniverse(data))
+      .catch((err: Error) => {
+        if (err.name !== "AbortError") setError(err.message);
+      });
+    return () => controller.abort();
+  }, []);
+
+  // The link is the plan: keep the address bar current without adding history.
+  const encoded = encodeState(state);
+  useEffect(() => {
+    window.history.replaceState(null, "", `#${encoded}`);
+  }, [encoded]);
+
+  const system = universe?.systems.find((s) => s.name === state.system) ?? universe?.systems[0];
+  const bodies = useMemo(() => system?.bodies ?? [], [system]);
+  const byId = useMemo(() => new Map(bodies.map((b) => [b.id, b])), [bodies]);
+
+  // Not caring about armistice means planning as if no zone were there.
+  const standoff = state.careArmistice ? state.standoff : 0;
+  const legs = useMemo(
+    () =>
+      solvePlan({
+        bodies,
+        originIds: state.originIds,
+        destIds: state.destIds,
+        spread: state.spread,
+        drift: state.drift,
+        radius: state.radius,
+        placement: state.placement,
+        mode: state.mode,
+        dampenRange: state.dampen,
+        standoff,
+      }),
+    [bodies, state.originIds, state.destIds, state.spread, state.drift, state.radius, state.placement, state.mode, state.dampen, standoff],
+  );
+  const activeLeg = Math.min(state.activeLeg, Math.max(0, legs.length - 1));
+  const leg = legs[activeLeg];
+
+  const start = startId ? byId.get(startId) : undefined;
+  const routesIn = useMemo(
+    () => (leg ? approaches(leg.snare, bodies, { from: start, limit: 4 }) : []),
+    [leg, bodies, start],
+  );
+  const approach = routesIn[Math.min(approachIndex, routesIn.length - 1)];
+
+  const player = useMemo(() => parseShowLocation(locationText), [locationText]);
+  const playerCheck = useMemo(() => {
+    if (!player || !leg) return undefined;
+    const rel = sub(player, leg.dest.pos);
+    const along = dot(rel, leg.direction);
+    return {
+      evaluation: evaluateLeg(leg, player),
+      toSnare: distance(player, leg.snare),
+      along: along - leg.distance,
+      lateral: Math.sqrt(Math.max(0, length(rel) ** 2 - along ** 2)),
+    };
+  }, [player, leg]);
+
+  const update = (patch: Partial<PlanState>) => setState((s) => ({ ...s, ...patch }));
+  const origins = state.originIds.map((id) => byId.get(id)).filter((b): b is Body => !!b);
+  const dests = state.destIds.map((id) => byId.get(id)).filter((b): b is Body => !!b);
+  const targetDrive = universe?.drives.find((d) => d.id === state.targetDrive);
+  const myDrive = universe?.drives.find((d) => d.id === state.myDrive);
+  const monitorReach = bodies.find((b) => b.monitored)?.monitored ?? 50_000_000;
+  const ship = universe?.interdictors.find((i) => i.id === state.ship);
+  const dampening = state.mode === "dampen";
+  // Values typed over the ship's own are a custom fit, and say so.
+  const stock = !!ship && (ship.snareRadius === 0 || ship.snareRadius === state.radius) && ship.dampenRange === state.dampen;
+
+  // Suggestions belong to one destination, snare and spread; anything else is stale.
+  // Hand-set weights travel in the link as `id:weight` pairs; that string is also their identity.
+  const weightsKey = Object.entries(state.weights)
+    .map(([id, weight]) => `${id}:${weight}`)
+    .join(",");
+  const weights = useMemo(() => anchorWeights(bodies, state.weights), [bodies, weightsKey]); // eslint-disable-line react-hooks/exhaustive-deps
+  const deviceKey = `${system?.name}|${state.radius}|${state.spread}|${state.mode}|${state.dampen}|${weightsKey}|${standoff}|${state.careComms}`;
+  const catchKey = `${deviceKey}|${state.destIds[0] ?? ""}`;
+  const catchOptions = { radius: state.radius, spread: state.spread, mode: state.mode, dampenRange: state.dampen, weights, standoff };
+
+  // A scan belongs to one system and one device; a change to either stops it.
+  useEffect(() => () => void scanRun.current++, [deviceKey]);
+  const scanned = scan?.key === deviceKey ? scan : undefined;
+  const runScan = () => {
+    const run = ++scanRun.current;
+    const targets = scanTargets(bodies);
+    const found: { destId: string; best: Catch; value: number; watched: boolean }[] = [];
+    let next = 0;
+    // In slices, so the page stays responsive and the list fills in as it goes.
+    const slice = () => {
+      if (run !== scanRun.current) return;
+      const started = performance.now();
+      while (next < targets.length && performance.now() - started < 40) {
+        const [best] = bestCatches(bodies, targets[next], { ...catchOptions, limit: 1 });
+        // Traffic on a route scales with both ends: busy origins into a busy stop.
+        if (best) {
+          // The spot sits a few hundred km from its destination at most, far
+          // inside any monitored zone's reach, so the destination stands for it.
+          const watched = monitoredAt(targets[next].pos, bodies).length > 0;
+          // Watched space is a worse place to work, when that matters to you.
+          const penalty = state.careComms && watched ? WATCHED_PENALTY : 1;
+          found.push({ destId: targets[next].id, best, value: best.score * weightOf(targets[next], weights) * penalty, watched });
+        }
+        next++;
+      }
+      found.sort(
+        (a, b) =>
+          b.value - a.value ||
+          b.best.originIds.length - a.best.originIds.length ||
+          b.best.maxDistance - a.best.maxDistance ||
+          b.best.margin - a.best.margin,
+      );
+      setScan({ key: deviceKey, done: next, total: targets.length, results: found.slice(0, 8) });
+      if (next < targets.length) window.setTimeout(slice, 0);
+    };
+    slice();
+  };
+  const suggestions = catches?.key === catchKey ? catches.list : undefined;
+  const findCatches = () => {
+    const dest = byId.get(state.destIds[0] ?? "");
+    if (!dest) return;
+    const list = bestCatches(bodies, dest, catchOptions);
+    setCatches({ key: catchKey, list });
+    if (list[0]) update({ originIds: list[0].originIds, activeLeg: 0 });
+  };
+  const describeCatch = (c: Catch) => {
+    const names = c.originIds
+      .map((id) => byId.get(id))
+      .filter((b): b is Body => !!b && b.kind !== "asteroid")
+      // Lead with the places that carry the weight.
+      .sort((a, b) => weightOf(b, weights) - weightOf(a, weights) || CATCH_ORDER.indexOf(a.kind) - CATCH_ORDER.indexOf(b.kind))
+      .map((b) => b.name);
+    const bases = c.originIds.length - c.major;
+    return {
+      weight: Math.round(c.score),
+      title: `${c.major} location${c.major === 1 ? "" : "s"}${bases ? ` + ${bases} asteroid base${bases === 1 ? "" : "s"}` : ""}`,
+      names: names.slice(0, 6).join(", ") + (names.length > 6 ? `, +${names.length - 6} more` : ""),
+    };
+  };
+
+  const copy = (label: string, text: string) => {
+    void navigator.clipboard?.writeText(text).then(() => {
+      setCopied(label);
+      window.setTimeout(() => setCopied((c) => (c === label ? undefined : c)), 1400);
+    });
+  };
+
+  if (error) return <div className="splash">Could not load game data: {error}</div>;
+  if (!universe || !system) return <div className="splash">Loading game data…</div>;
+
+  const blockedBy = new Map<string, string[]>();
+  for (const b of leg?.blocked ?? []) blockedBy.set(b.routeId, [...(blockedBy.get(b.routeId) ?? []), b.by.name]);
+  const coverage = leg?.evaluation.coverage ?? 0;
+  const status = !leg || leg.routes.length === 0 ? "none" : leg.corridor.feasible ? "full" : coverage > 0 ? "partial" : "miss";
+
+  return (
+    <div className="app">
+      <header>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <h1>Snares</h1>
+          <span className="tagline">quantum interdiction planner</span>
+        </div>
+        <nav className="systems" aria-label="Star system">
+          {Array.isArray(universe.systems) &&
+            universe.systems.map((s) => (
+              <button
+                key={s.name}
+                className={s.name === system.name ? "on" : undefined}
+                onClick={() => {
+                  if (s.name === system.name) return;
+                  setStartId(undefined);
+                  setMenu(undefined);
+                  update({ system: s.name, originIds: [], destIds: [], activeLeg: 0, weights: {} });
+                }}
+              >
+                {s.name}
+              </button>
+            ))}
+        </nav>
+        <div className="header-right">
+          <span className="build" title={`Game data extracted ${universe.extracted.slice(0, 10)}`}>
+            game build {universe.build}
+          </span>
+          <button className="ghost" onClick={() => copy("link", window.location.href)}>
+            {copied === "link" ? "Link copied" : "Copy link"}
+          </button>
+        </div>
+      </header>
+
+      <aside>
+        <section>
+          <h2>Scout {system.name}</h2>
+          <button className="catch-go" onClick={runScan} disabled={!!scanned && scanned.done < scanned.total}>
+            {scanned && scanned.done < scanned.total
+              ? `Scanning… ${scanned.done} / ${scanned.total}`
+              : `Find the best ${dampening ? "dampening" : "snare"} spots in ${system.name}`}
+          </button>
+          <p className="note">
+            Checks every destination in the system and ranks the spots where one {dampening ? "dampener" : "snare"} takes
+            the most traffic. Uses your ship and departure spread.
+          </p>
+          <p className="note">
+            Weighting. Hot: city planet 10, refinery station 9, full-service hub 8, gateway into a live system 7.
+            Lesser: other serviced station 4, planet 3, moon 2. Cold: gateway to a system not in the game 0.5, comm array
+            or asteroid base 0.25. A spot scores its origins' weights times the destination's.
+          </p>
+          <label className="field-label" title="Raise a place for an event or hotspot, or set 0 to ignore it">
+            Priorities
+          </label>
+          {Object.keys(state.weights).length === 0 && (
+            <p className="note first">
+              Event on, or a hotspot you want to hunt? Give a place its own weight and both searches favour spots that catch
+              traffic from it. 0 ignores a place.
+            </p>
+          )}
+          {Object.entries(state.weights).map(([id, weight]) => {
+            const body = byId.get(id);
+            if (!body) return null;
+            return (
+              <div key={id} className="dest-row weight-row">
+                <span className={`dot kind-${body.kind}`} />
+                <span className="dest-name">
+                  {body.name}
+                  <span className="stock"> normally {body.weight ?? 1}</span>
+                </span>
+                <input
+                  type="number"
+                  min={0}
+                  step={5}
+                  aria-label={`Weight for ${body.name}`}
+                  value={weight}
+                  onChange={(e) =>
+                    update({ weights: { ...state.weights, [id]: Math.max(0, Number(e.target.value) || 0) } })
+                  }
+                />
+                <button
+                  className="x-button"
+                  title="Back to normal weight"
+                  onClick={() => update({ weights: Object.fromEntries(Object.entries(state.weights).filter(([k]) => k !== id)) })}
+                >
+                  ×
+                </button>
+              </div>
+            );
+          })}
+          <LocationPicker
+            bodies={bodies}
+            exclude={Object.keys(state.weights)}
+            placeholder="Prioritise a place…"
+            onPick={(b) => update({ weights: { ...state.weights, [b.id]: Math.max(50, (b.weight ?? 1) * 5) } })}
+          />
+
+          {scanned && scanned.done >= scanned.total && scanned.results.length === 0 && (
+            <p className="warn">Nothing in {system.name} can be covered with this ship.</p>
+          )}
+          {scanned && scanned.results.length > 0 && (
+            <ol className="approaches">
+              {scanned.results.map(({ destId, best, watched }, index) => {
+                const dest = byId.get(destId);
+                if (!dest) return null;
+                const text = describeCatch(best);
+                const on =
+                  state.destIds.length === 1 &&
+                  state.destIds[0] === destId &&
+                  best.originIds.length === state.originIds.length &&
+                  best.originIds.every((id) => state.originIds.includes(id));
+                return (
+                  <li key={destId}>
+                    <button
+                      className={on ? "approach on" : "approach"}
+                      onClick={() => update({ destIds: [destId], originIds: best.originIds, activeLeg: 0 })}
+                    >
+                      <span className="approach-line">
+                        <span className="rank">{index + 1}</span>
+                        {dest.name}
+                        {state.careComms && <span className={watched ? "tag watched" : "tag dark"}>{watched ? "watched" : "dark"}</span>}
+                        <span className="count">weight {Math.round(scanned.results[index].value)}</span>
+                      </span>
+                      <span className="approach-detail">
+                        {text.title}: {text.names}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+          )}
+        </section>
+
+        <section>
+          <h2>Route</h2>
+          <label className="field-label">Targets come from</label>
+          <div className="chips">
+            {Array.isArray(origins) &&
+              (allChips || origins.length <= 10 ? origins : origins.slice(0, 8)).map((o) => (
+                <button
+                  key={o.id}
+                  className="chip"
+                  title="Remove"
+                  onClick={() => update({ originIds: state.originIds.filter((id) => id !== o.id) })}
+                >
+                  <span className={`dot kind-${o.kind}`} />
+                  {o.name}
+                  <span className="x">×</span>
+                </button>
+              ))}
+            {origins.length > 10 && (
+              <button className="chip more" onClick={() => setAllChips((v) => !v)}>
+                {allChips ? "show fewer" : `+${origins.length - 8} more`}
+              </button>
+            )}
+          </div>
+          <LocationPicker
+            bodies={bodies}
+            exclude={[...state.originIds, state.destIds[0] ?? ""]}
+            placeholder="Add an origin…"
+            onPick={(b) => update({ originIds: [...state.originIds, b.id] })}
+          />
+          <div className="quick">
+            <button
+              onClick={() =>
+                update({
+                  originIds: [
+                    ...new Set([
+                      ...state.originIds,
+                      ...bodies.filter((b) => b.kind === "planet" && b.id !== state.destIds[0]).map((b) => b.id),
+                    ]),
+                  ],
+                })
+              }
+            >
+              + planets
+            </button>
+            <button
+              onClick={() =>
+                update({
+                  originIds: [
+                    ...new Set([
+                      ...state.originIds,
+                      ...bodies.filter((b) => b.kind === "jump" && b.id !== state.destIds[0]).map((b) => b.id),
+                    ]),
+                  ],
+                })
+              }
+            >
+              + jump points
+            </button>
+            <button onClick={() => update({ originIds: [] })} disabled={state.originIds.length === 0}>
+              clear
+            </button>
+          </div>
+
+          <label className="field-label">Heading to</label>
+          {Array.isArray(dests) &&
+            dests.map((d, index) => (
+              <div key={`${d.id}-${index}`} className="dest-row">
+                <span className="leg-no">{dests.length > 1 ? index + 1 : "→"}</span>
+                <span className={`dot kind-${d.kind}`} />
+                <span className="dest-name">{d.name}</span>
+                {index < dests.length - 1 && <span className="via">route change</span>}
+                <button
+                  className="x-button"
+                  title="Remove"
+                  onClick={() => update({ destIds: state.destIds.filter((_, i) => i !== index), activeLeg: 0 })}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          {dests.length < 3 && (
+            <LocationPicker
+              bodies={bodies}
+              exclude={[state.destIds[state.destIds.length - 1] ?? ""]}
+              placeholder={dests.length === 0 ? "Pick the destination…" : "Then they re-route to… (optional)"}
+              onPick={(b) => update({ destIds: [...state.destIds, b.id] })}
+            />
+          )}
+          {dests.length > 1 && (
+            <div className="row">
+              <label htmlFor="drift">Drift after a drop-out</label>
+              <span className="unit-input">
+                <input
+                  id="drift"
+                  type="number"
+                  min={0}
+                  step={10}
+                  value={Math.round(state.drift / 1000)}
+                  onChange={(e) => update({ drift: Math.max(0, Number(e.target.value) || 0) * 1000 })}
+                />
+                km
+              </span>
+            </div>
+          )}
+
+          {dests.length > 0 && (
+            <div className="catch">
+              <button className="catch-go" onClick={findCatches}>
+                Find the best catch into {dests[0].name}
+              </button>
+              <p className="note">
+                Don't know where targets come from? This picks the origins for you: the largest sets of places a single
+                {dampening ? " dampener position holds" : " snare position covers"} in full.
+              </p>
+              {suggestions && suggestions.length === 0 && (
+                <p className="warn">No clear route into {dests[0].name} can be covered with this {dampening ? "dampener" : "snare"}.</p>
+              )}
+              {suggestions && suggestions.length > 0 && (
+                <ol className="approaches">
+                  {suggestions.map((c, index) => {
+                    const text = describeCatch(c);
+                    const on =
+                      c.originIds.length === state.originIds.length && c.originIds.every((id) => state.originIds.includes(id));
+                    return (
+                      <li key={index}>
+                        <button
+                          className={on ? "approach on" : "approach"}
+                          onClick={() => update({ originIds: c.originIds, activeLeg: 0 })}
+                        >
+                          <span className="approach-line">
+                            {text.title}
+                            <span className="count">weight {text.weight}</span>
+                          </span>
+                          <span className="approach-detail">
+                            {text.names} ·{" "}
+                            {dampening ? (
+                              <>
+                                <b>{formatDistance(c.margin)}</b> of range to spare
+                              </>
+                            ) : (
+                              <>
+                                snare up to <b>{formatDistance(c.maxDistance)}</b> out
+                              </>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ol>
+              )}
+            </div>
+          )}
+
+          <label className="field-label" title="How far from an origin's centre a target may start its jump">
+            Departure spread
+          </label>
+          <div className="segmented">
+            {SPREADS.map((option) => (
+              <button
+                key={option.label}
+                className={state.spread === option.value ? "on" : undefined}
+                onClick={() => update({ spread: option.value })}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
+          <p className="note">
+            {state.spread === "auto"
+              ? "Auto: anywhere in orbit around a planet or moon (cities and outposts count as their body), within 10 km of a station."
+              : state.spread === "exact"
+                ? "Exact: every target leaves from the dead centre of its origin."
+                : `Targets leave from within ${formatDistance(state.spread)} of each origin.`}
+          </p>
+        </section>
+
+        <section>
+          <h2>Law</h2>
+          <label className="check-row">
+            <input type="checkbox" checked={state.careArmistice} onChange={(e) => update({ careArmistice: e.target.checked })} />
+            <span>
+              Keep clear of armistice zones
+              <small>A target pulled out beside one just flies in and is safe.</small>
+            </span>
+          </label>
+          {state.careArmistice && (
+            <div className="row">
+              <label htmlFor="standoff">Stand-off from the zone</label>
+              <span className="unit-input">
+                <input
+                  id="standoff"
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={Math.round(state.standoff / 1000)}
+                  onChange={(e) => update({ standoff: Math.max(0, Number(e.target.value) || 0) * 1000 })}
+                />
+                km
+              </span>
+            </div>
+          )}
+          <label className="check-row">
+            <input type="checkbox" checked={state.careComms} onChange={(e) => update({ careComms: e.target.checked })} />
+            <span>
+              Avoid monitored space
+              <small>Comm arrays and stations see crime within {formatDistance(monitorReach)}. The scout marks watched spots down.</small>
+            </span>
+          </label>
+        </section>
+
+        <section>
+          <h2>Your ship</h2>
+          <div className="row first">
+            <label htmlFor="ship">Interdictor</label>
+            <select
+              id="ship"
+              value={state.ship ?? ""}
+              onChange={(e) => {
+                const picked = universe.interdictors.find((i) => i.id === e.target.value);
+                if (!picked) return update({ ship: undefined });
+                update({
+                  ship: picked.id,
+                  radius: picked.snareRadius || state.radius,
+                  dampen: picked.dampenRange,
+                  // A ship with no snare can only dampen.
+                  mode: picked.snareRadius ? state.mode : "dampen",
+                  myDrive: universe.drives.some((d) => d.id === picked.drive) ? picked.drive : state.myDrive,
+                });
+              }}
+            >
+              {Array.isArray(universe.interdictors) &&
+                universe.interdictors.map((i) => (
+                  <option key={i.id} value={i.id}>
+                    {i.name} · {i.snareRadius ? `snare ${formatDistance(i.snareRadius)}` : `dampener ${formatDistance(i.dampenRange)}`}
+                  </option>
+                ))}
+              <option value="">Custom</option>
+            </select>
+          </div>
+
+          <label className="field-label">Plan for</label>
+          <div className="segmented">
+            <button
+              className={!dampening ? "on" : undefined}
+              disabled={!!ship && ship.snareRadius === 0}
+              title={ship && ship.snareRadius === 0 ? `${ship.name} has no snare` : undefined}
+              onClick={() => update({ mode: "snare" })}
+            >
+              Snare · pull from quantum
+            </button>
+            <button className={dampening ? "on" : undefined} onClick={() => update({ mode: "dampen", activeLeg: activeLeg })}>
+              Dampen · hold at arrival
+            </button>
+          </div>
+          <p className="note">
+            {dampening
+              ? "A dampener pulls nothing out of quantum. It stops ships inside its range from spooling, so the plan is where to wait so targets drop out next to you and cannot leave."
+              : "A snare pulls every ship whose quantum path crosses its sphere out of quantum, so the plan is where on the routes to wait."}
+          </p>
+
+          {!(ship && ship.snareRadius === 0) && (
+            <div className="row">
+              <label htmlFor="radius">Snare radius</label>
+              <span className="unit-input">
+                <input
+                  id="radius"
+                  type="number"
+                  min={0.1}
+                  step={1}
+                  value={Math.round(state.radius / 100) / 10}
+                  onChange={(e) => update({ radius: Math.max(0.1, Number(e.target.value) || 0) * 1000 })}
+                />
+                km
+              </span>
+            </div>
+          )}
+          <div className="row">
+            <label htmlFor="dampen">Dampener range</label>
+            <span className="unit-input">
+              <input
+                id="dampen"
+                type="number"
+                min={0.1}
+                step={0.25}
+                value={Math.round(state.dampen / 10) / 100}
+                onChange={(e) => update({ dampen: Math.max(0.1, Number(e.target.value) || 0) * 1000 })}
+              />
+              km
+            </span>
+          </div>
+          {ship && (
+            <p className="note">
+              <span className="device">{ship.device}</span>
+              {stock ? " as the game files have it" : " — values changed from the game files"}: {ship.chargeTime}s to charge,{" "}
+              {ship.dischargeTime}s to discharge.
+              {ship.snareRadius === 0 && " No snare: it cannot pull ships out of quantum."}
+            </p>
+          )}
+        </section>
+
+        <section className={`result status-${status}`}>
+          <h2>Position</h2>
+          {legs.length > 1 && (
+            <div className="segmented legs">
+              {legs.map((l, index) => (
+                <button key={l.dest.id + index} className={index === activeLeg ? "on" : undefined} onClick={() => update({ activeLeg: index })}>
+                  Leg {index + 1} → {l.dest.name}
+                </button>
+              ))}
+            </div>
+          )}
+          {status === "none" && <p className="empty">Pick at least one origin and a destination.</p>}
+          {leg && status !== "none" && (
+            <>
+              <div className="verdict">
+                <span className="verdict-value">{formatPercent(coverage)}</span>
+                <span className="verdict-text">
+                  {dampening
+                    ? status === "full"
+                      ? "of arrivals held, in full"
+                      : "held — no spot reaches every arrival point"
+                    : status === "full"
+                      ? "of routes covered, in full"
+                      : status === "partial"
+                        ? "covered — no spot catches every route"
+                        : "covered — these routes cannot be snared here"}
+                </span>
+              </div>
+              {status !== "full" && dampening && (
+                <p className="warn">
+                  These routes drop out farther apart than the dampener reaches ({formatDistance(state.dampen)}) around{" "}
+                  {leg.dest.name}'s arrival sphere ({formatDistance(arrivalOf(leg.dest))}). Showing the spot that holds the most.
+                  Cover fewer origins, or bring a second ship.
+                </p>
+              )}
+              {status !== "full" && !dampening && (
+                <p className="warn">
+                  The routes spread wider than the snare before they clear {leg.dest.name}'s arrival radius (
+                  {formatDistance(arrivalOf(leg.dest))}). Showing the spot that catches the most. Drop an outlying origin, or
+                  tighten the departure spread.
+                </p>
+              )}
+
+              <dl className="facts">
+                <dt>From {leg.dest.name}</dt>
+                <dd>{formatDistance(leg.distance)}</dd>
+                <dt>Room for error</dt>
+                <dd className={leg.evaluation.margin < 0 ? "bad" : undefined}>
+                  {leg.evaluation.margin >= 0 ? `±${formatDistance(leg.evaluation.margin)}` : "none"}
+                </dd>
+                <dt>Coordinates</dt>
+                <dd>
+                  <button
+                    className="coords"
+                    title="Copy as x y z in metres"
+                    onClick={() => copy("coords", leg.snare.map((v) => Math.round(v)).join(" "))}
+                  >
+                    {copied === "coords" ? "copied" : `${leg.snare.map(formatKm).join(", ")} km`}
+                  </button>
+                </dd>
+              </dl>
+
+              {(state.careArmistice || state.careComms) && (
+                <div className="law">
+                  {state.careArmistice &&
+                    (leg.security.armistice ? (
+                      <p className={leg.security.armistice.gap < state.standoff ? "law-line bad" : "law-line good"}>
+                        <b>Armistice</b>
+                        {leg.security.armistice.gap < 0
+                          ? `Overlaps ${leg.security.armistice.body.name}'s zone by ${formatDistance(-leg.security.armistice.gap)}. Targets land inside it.`
+                          : `${leg.security.armistice.body.name}'s zone is ${formatDistance(leg.security.armistice.gap)} from ${
+                              dampening ? "you" : "the snare's edge"
+                            }: about ${formatDuration(leg.security.armistice.gap / RUN_SPEED)} for a target running at ${RUN_SPEED} m/s.`}
+                        {leg.security.armistice.gap >= 0 && leg.security.armistice.gap < state.standoff && " Closer than your stand-off."}
+                      </p>
+                    ) : (
+                      <p className="law-line good">
+                        <b>Armistice</b>No armistice zone in open space in {system.name}.
+                      </p>
+                    ))}
+                  {state.careComms &&
+                    (leg.security.monitoredBy.length > 0 ? (
+                      <p className="law-line warnish">
+                        <b>Watched</b>
+                        Inside the monitored zone of {leg.security.monitoredBy.slice(0, 3).map((b) => b.name).join(", ")}
+                        {leg.security.monitoredBy.length > 3 ? ` and ${leg.security.monitoredBy.length - 3} more` : ""}. Crime here is
+                        reported unless the comm array is down.
+                      </p>
+                    ) : (
+                      <p className="law-line good">
+                        <b>Dark</b>No monitored zone reaches this spot.
+                      </p>
+                    ))}
+                </div>
+              )}
+
+              {leg.corridor.feasible && !dampening && (
+                <div className="slider">
+                  <input
+                    type="range"
+                    min={0}
+                    max={1}
+                    step={0.005}
+                    value={state.placement}
+                    aria-label="Where in the corridor to sit"
+                    onChange={(e) => update({ placement: Number(e.target.value) })}
+                  />
+                  <div className="slider-ends">
+                    <span>{formatDistance(leg.corridor.minDistance)}</span>
+                    <span>{formatDistance(leg.corridor.maxDistance)}</span>
+                  </div>
+                  <p className="note">
+                    Anywhere on this stretch catches every route. Closer to {leg.dest.name} leaves more room for error; farther
+                    out catches targets earlier.
+                  </p>
+                </div>
+              )}
+
+              <div className="table-scroll">
+              <table className="routes">
+                <thead>
+                  <tr>
+                    <th>Route</th>
+                    <th title={dampening ? "Distance from you to where this route drops out" : "Distance from the snare to the route's centre line"}>
+                      {dampening ? "Drops at" : "Off line"}
+                    </th>
+                    <th title="Width of the route's possible paths at that point">Width</th>
+                    <th>Cover</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leg.routes.map((route, index) => {
+                    const r = leg.evaluation.routes[index];
+                    const blocks = blockedBy.get(route.id);
+                    return (
+                      <tr key={route.id} className={r.coverage >= 1 ? undefined : "short"}>
+                        <td>
+                          {route.label}
+                          {blocks && (
+                            <span className="blocked" title={`The straight line passes through ${blocks.join(", ")}; the game will not plot this jump directly.`}>
+                              blocked by {blocks.join(", ")}
+                            </span>
+                          )}
+                        </td>
+                        <td>{formatDistance(r.offset)}</td>
+                        <td>±{formatDistance(r.coneRadius)}</td>
+                        <td>{formatPercent(r.coverage)}</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+              </div>
+
+              <div className="buttons">
+                <button onClick={() => map.current?.focusSnare()}>Zoom to {dampening ? "position" : "snare"}</button>
+                <button onClick={() => map.current?.fitPlan()}>Show routes</button>
+                <button onClick={() => map.current?.fitSystem()}>System</button>
+                <button onClick={() => map.current?.topDown()}>Top-down</button>
+              </div>
+            </>
+          )}
+        </section>
+
+        {leg && status !== "none" && (
+          <section>
+            <h2>Getting there</h2>
+            <p className="note">Quantum toward a marker and cut the drive early. Pick where you start, or see the closest lines from anywhere.</p>
+            <div className="dest-row">
+              <span className="leg-no">⌂</span>
+              {start ? (
+                <>
+                  <span className={`dot kind-${start.kind}`} />
+                  <span className="dest-name">{start.name}</span>
+                  <button className="x-button" title="Any start" onClick={() => setStartId(undefined)}>
+                    ×
+                  </button>
+                </>
+              ) : (
+                <span className="dest-name muted">starting anywhere</span>
+              )}
+            </div>
+            {!start && (
+              <LocationPicker
+                bodies={bodies}
+                placeholder="I'm starting from…"
+                onPick={(b) => {
+                  setStartId(b.id);
+                  setApproachIndex(0);
+                }}
+              />
+            )}
+            <ol className="approaches">
+              {routesIn.length === 0 && <li className="empty">No clear quantum line passes this spot from there.</li>}
+              {routesIn.map((a, index) => {
+                const total = distance(a.from.pos, a.to.pos);
+                const eta = myDrive ? myDrive.spool + timeToReach(total - a.remaining, total, myDrive) : undefined;
+                return (
+                  <li key={`${a.from.id}-${a.to.id}`}>
+                    <button className={index === approachIndex ? "approach on" : "approach"} onClick={() => setApproachIndex(index)}>
+                      <span className="approach-line">
+                        {a.from.name} <span className="arrow">→</span> {a.to.name}
+                      </span>
+                      <span className="approach-detail">
+                        {a.remaining <= arrivalOf(a.to) + ARRIVAL_SLACK ? (
+                          <>
+                            <b>finish the jump</b>
+                          </>
+                        ) : (
+                          <>
+                            drop out with <b>{formatDistance(a.remaining)}</b> to go
+                          </>
+                        )}
+                        {a.miss > 500 ? `, then ${formatDistance(a.miss)} sublight` : ", dead on"}
+                        {eta !== undefined && ` · ${formatDuration(eta)}`}
+                      </span>
+                    </button>
+                  </li>
+                );
+              })}
+            </ol>
+            <div className="row">
+              <label htmlFor="mydrive">Your drive</label>
+              <DriveSelect id="mydrive" universe={universe} value={state.myDrive} onChange={(id) => update({ myDrive: id })} />
+            </div>
+          </section>
+        )}
+
+        {leg && status !== "none" && (
+          <section>
+            <h2>Check your position</h2>
+            <p className="note">
+              Type <code>/showlocation</code> in game chat and paste the result.
+            </p>
+            <textarea
+              rows={2}
+              spellCheck={false}
+              placeholder="Coordinates: x:… y:… z:…"
+              value={locationText}
+              onChange={(e) => setLocationText(e.target.value)}
+            />
+            {locationText.trim() !== "" && !player && <p className="warn">No coordinates found in that text.</p>}
+            {playerCheck && (
+              <div className={`check ${playerCheck.evaluation.margin >= 0 ? "good" : "off"}`}>
+                <strong>
+                  {playerCheck.evaluation.margin >= 0
+                    ? `In position — every ${dampening ? "arrival held" : "route covered"}, ${formatDistance(playerCheck.evaluation.margin)} to spare.`
+                    : `Out of position — ${dampening ? "holding" : "covering"} ${formatPercent(playerCheck.evaluation.coverage)} from here.`}
+                </strong>
+                <span>
+                  {formatDistance(playerCheck.toSnare)} from the planned spot
+                  {dampening
+                    ? "."
+                    : `: ${formatDistance(Math.abs(playerCheck.along))} ${playerCheck.along > 0 ? "too far out from" : "too close to"} ${leg.dest.name}, ${formatDistance(playerCheck.lateral)} off the corridor line.`}
+                </span>
+                {playerCheck.evaluation.margin < 0 && (
+                  <ul>
+                    {leg.routes.map((route, index) => {
+                      const r = playerCheck.evaluation.routes[index];
+                      return r.coverage >= 1 ? null : (
+                        <li key={route.id}>
+                          {route.label}: {formatPercent(r.coverage)} — {dampening ? "drops out" : "line passes"} {formatDistance(r.offset)} away
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {leg && status !== "none" && (
+          <section>
+            <h2>Target timing</h2>
+            <div className="row">
+              <label htmlFor="targetdrive">Target's drive</label>
+              <DriveSelect id="targetdrive" universe={universe} value={state.targetDrive} onChange={(id) => update({ targetDrive: id })} />
+            </div>
+            {targetDrive ? (
+              <table className="routes">
+                <thead>
+                  <tr>
+                    <th>Route</th>
+                    <th title="From the moment the target's drive engages">Reaches you in</th>
+                    <th>At</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {leg.routes.map((route, index) => {
+                    const r = leg.evaluation.routes[index];
+                    const total = Math.max(1, distance(route.origin, leg.dest.pos) - arrivalOf(leg.dest));
+                    // A dampener waits at the end of the trip; a snare cuts it short.
+                    const covered = dampening ? total : Math.min(total, Math.max(0, distance(route.origin, leg.dest.pos) - r.along));
+                    return (
+                      <tr key={route.id}>
+                        <td>{route.label}</td>
+                        <td>{formatDuration(targetDrive.spool + timeToReach(covered, total, targetDrive))}</td>
+                        <td>{Math.round(speedAt(covered, total, targetDrive) / 1000).toLocaleString("en-US")} km/s</td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            ) : (
+              <p className="note">Pick a drive to see how long each route takes to reach you.</p>
+            )}
+            <p className="note">Timing is an estimate: it uses the drive's mean acceleration, not the game's exact two-stage curve.</p>
+          </section>
+        )}
+
+        <footer>
+          Positions, radii and drive stats are read from the game's own files (build {universe.build}). Unofficial fan tool, not
+          affiliated with Cloud Imperium Games. Star Citizen® is a trademark of Cloud Imperium Rights LLC.
+        </footer>
+      </aside>
+
+      <main>
+        <MapView
+          ref={map}
+          bodies={bodies}
+          legs={legs}
+          activeLeg={activeLeg}
+          dampen={state.dampen}
+          showArmistice={state.careArmistice}
+          showMonitored={state.careComms}
+          player={player}
+          approach={approach}
+          fitKey={`${system.name}|${state.originIds.join(",")}|${state.destIds.join(",")}`}
+          onPick={(body, anchor) => setMenu({ body, ...anchor })}
+        />
+        {menu && (
+          <div className="pick-menu" style={{ left: menu.x, top: menu.y }}>
+            <div className="pick-title">
+              <span className={`dot kind-${menu.body.kind}`} />
+              {menu.body.name}
+            </div>
+            <div className="pick-meta">
+              arrival {formatDistance(arrivalOf(menu.body))} · auto spread {formatDistance(spreadOf(menu.body, "auto"))}
+            </div>
+            <button
+              disabled={state.originIds.includes(menu.body.id)}
+              onClick={() => {
+                update({ originIds: [...state.originIds, menu.body.id] });
+                setMenu(undefined);
+              }}
+            >
+              Add as origin
+            </button>
+            <button
+              onClick={() => {
+                update({ destIds: [menu.body.id], originIds: state.originIds.filter((id) => id !== menu.body.id), activeLeg: 0 });
+                setMenu(undefined);
+              }}
+            >
+              Set as destination
+            </button>
+            <button className="ghost" onClick={() => setMenu(undefined)}>
+              Close
+            </button>
+          </div>
+        )}
+      </main>
+    </div>
+  );
+}
+
+function DriveSelect({
+  id,
+  universe,
+  value,
+  onChange,
+}: {
+  id: string;
+  universe: Universe;
+  value?: string;
+  onChange(id: string | undefined): void;
+}) {
+  const sizes = [...new Set(universe.drives.map((d) => d.size))].sort((a, b) => a - b);
+  return (
+    <select id={id} value={value ?? ""} onChange={(e) => onChange(e.target.value || undefined)}>
+      <option value="">—</option>
+      {sizes.map((size) => (
+        <optgroup key={size} label={`Size ${size}`}>
+          {universe.drives
+            .filter((d) => d.size === size)
+            .map((d) => (
+              <option key={d.id} value={d.id}>
+                {d.name} · {Math.round(d.speed / 1e6)} Mm/s
+              </option>
+            ))}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
