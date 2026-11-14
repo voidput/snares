@@ -96,6 +96,8 @@ near limit is the destination's arrival radius plus the snare radius. See
 
 ## Legal
 
+Privacy policy: [PRIVACY.md](PRIVACY.md). Terms of use: [TERMS.md](TERMS.md). Both are shown on the site from the footer.
+
 Unofficial, non-commercial fan site, not affiliated with the Cloud Imperium group
 of companies. It carries the Star Citizen Fankit's Made By The Community mark and
 CIG's disclaimer in a persistent footer; those are a condition of the Fankit

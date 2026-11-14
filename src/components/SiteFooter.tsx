@@ -8,15 +8,25 @@
 //   sits in the bar at 40px, full opacity, with no filter, shadow or other effect;
 // - a trademark notice of at least 10pt: the bar carries one line at 14px, and the
 //   full disclaimer is one click away in the panel, also at 14px.
-import { Check, ChevronDown, ChevronUp, Coffee, Copy, ExternalLink } from "lucide-react";
+import { Check, ChevronDown, ChevronUp, Coffee, Copy, ExternalLink, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DISCLAIMER, MARK_ALT, MARK_SIZE, NOTICE_SIZE, SHORT_NOTICE } from "../brand/fankit";
 import brandMark from "../brand/MadeByTheCommunity_White.png";
 import { BUYMEACOFFEE_URL, enlistUrl, REFERRAL } from "../lib/support";
+import { PrivacyPolicy, Terms } from "./Policies";
+
+type View = "about" | "privacy" | "terms";
+const VIEWS: { id: View; label: string }[] = [
+  { id: "about", label: "About" },
+  { id: "privacy", label: "Privacy" },
+  { id: "terms", label: "Terms" },
+];
 
 export function SiteFooter({ build, extracted }: { build: string; extracted?: string }) {
-  const [open, setOpen] = useState(false);
+  const [view, setView] = useState<View>();
+  const open = view !== undefined;
+  const setOpen = (next: boolean) => setView(next ? "about" : undefined);
   const [copied, setCopied] = useState(false);
   const footer = useRef<HTMLElement>(null);
   const toggle = useRef<HTMLButtonElement>(null);
@@ -59,35 +69,48 @@ export function SiteFooter({ build, extracted }: { build: string; extracted?: st
     >
       {open && (
         <div id="footer-more" className="footer-more">
-          <div className="footer-legal" style={{ fontSize: NOTICE_SIZE }}>
-            <p>{DISCLAIMER}</p>
-            <p>
-              Positions, radii, armistice and monitored zones, and ship and drive figures are read from the game's own files
-              (build {build}) for planning only. No game code, art or audio is included. Free to use: no paid features, no
-              ads, no accounts, no tracking.
-            </p>
-          </div>
-          <div className="footer-referral">
-            <span className="footer-label">Referral code</span>
-            <div className="footer-referral-row">
-              <code>{REFERRAL.id}</code>
-              <button
-                className="ghost icon"
-                onClick={copyCode}
-                title={copied ? "Copied" : "Copy the code"}
-                aria-label={copied ? "Referral code copied" : "Copy referral code"}
-              >
-                {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+          <nav className="footer-views" aria-label="About Snares">
+            {VIEWS.map((v) => (
+              <button key={v.id} className="footer-action" aria-current={v.id === view ? "page" : undefined} onClick={() => setView(v.id)}>
+                {v.label}
               </button>
-              <a className="footer-link" href={enlistUrl(REFERRAL.id)} target="_blank" rel="noopener noreferrer">
-                Enlist <ExternalLink size={12} aria-hidden />
-              </a>
+            ))}
+          </nav>
+          {view === "about" && (
+            <div className="footer-about">
+              <div className="footer-legal" style={{ fontSize: NOTICE_SIZE }}>
+                <p>{DISCLAIMER}</p>
+                <p>
+                  Positions, radii, armistice and monitored zones, and ship and drive figures are read from the game's own files
+                  (build {build}) for planning only. No game code, art or audio is included. Free to use: no paid features, no
+                  ads, no accounts, no tracking.
+                </p>
+              </div>
+              <div className="footer-referral">
+                <span className="footer-label">Referral code</span>
+                <div className="footer-referral-row">
+                  <code>{REFERRAL.id}</code>
+                  <button
+                    className="ghost icon"
+                    onClick={copyCode}
+                    title={copied ? "Copied" : "Copy the code"}
+                    aria-label={copied ? "Referral code copied" : "Copy referral code"}
+                  >
+                    {copied ? <Check size={14} aria-hidden /> : <Copy size={14} aria-hidden />}
+                  </button>
+                  <a className="footer-link" href={enlistUrl(REFERRAL.id)} target="_blank" rel="noopener noreferrer">
+                    Enlist <ExternalLink size={12} aria-hidden />
+                  </a>
+                </div>
+                <span className="footer-blurb">
+                  New to Star Citizen? A referral code earns bonus starting credits after buying a game package. Courtesy of{" "}
+                  {REFERRAL.name}.
+                </span>
+              </div>
             </div>
-            <span className="footer-blurb">
-              New to Star Citizen? A referral code earns bonus starting credits after buying a game package. Courtesy of{" "}
-              {REFERRAL.name}.
-            </span>
-          </div>
+          )}
+          {view === "privacy" && <PrivacyPolicy />}
+          {view === "terms" && <Terms />}
         </div>
       )}
       <div className="footer-bar">
@@ -103,12 +126,20 @@ export function SiteFooter({ build, extracted }: { build: string; extracted?: st
             <Coffee size={14} aria-hidden /> Coffee
           </a>
           <button
+            className="footer-action"
+            aria-expanded={view === "privacy"}
+            aria-controls="footer-more"
+            onClick={() => setView(view === "privacy" ? undefined : "privacy")}
+          >
+            <ShieldCheck size={14} aria-hidden /> Privacy
+          </button>
+          <button
             ref={toggle}
             className="footer-action"
             aria-expanded={open}
             aria-controls="footer-more"
             aria-label={open ? "Less about Snares" : "More about Snares"}
-            onClick={() => setOpen((v) => !v)}
+            onClick={() => setOpen(!open)}
           >
             {open ? <ChevronDown size={14} aria-hidden /> : <ChevronUp size={14} aria-hidden />} {open ? "Less" : "More"}
           </button>

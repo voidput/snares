@@ -6,6 +6,13 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Privacy policy and terms
+
+Type: Added. Effort: L1.
+
+- Footer panel gains About, Privacy and Terms views; a Privacy button sits in the always-visible row. Text in `src/components/Policies.tsx`, mirrored in `PRIVACY.md` and `TERMS.md`.
+- Claims checked against the live site: one host contacted, no cookies set.
+
 ## 2026-11-14 — Footer after RSI+'s
 
 Type: Changed. Effort: L1.
