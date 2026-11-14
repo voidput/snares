@@ -52,7 +52,17 @@ Given only a destination, `plan.ts: bestCatches` grows groups of origins one sna
 
 ## Layout
 
-Left is what you set, right is what you get. A rail picks one setup panel (Scout, Route, Ship and law, Plans). The result panel keeps the verdict visible and tabs the rest (Spot, Fly in, Verify, Timing), so editing a route never hides the answer. Below 820px it stacks: map, result, setup.
+Left is what you set, right is what you get. A rail picks one setup panel (Scout, Route, Ship and law, Plans). The result panel keeps the verdict visible and tabs the rest (Spot, Fly in, Verify, Timing), so editing a route never hides the answer. 
+
+`useLayoutMode` in `src/App.tsx` picks the arrangement from two media queries and sets `layout-wide`, `layout-docked` or `layout-stacked` on `.app`:
+
+| Mode | Width | Arrangement |
+|---|---|---|
+| wide | 1600px and up | Rail, setup panel, map, result panel. Panel widths grow with the screen. |
+| docked | 821 to 1599px | One sidebar. The rail carries setup and result tabs; the verdict stays pinned above whichever is open. |
+| stacked | 820px and under | Column: map, result, setup. |
+
+The same three blocks (`setupContent`, `verdictHead`, `resultContent`) are arranged by each mode, so no content is written twice.
 
 ## Design language
 

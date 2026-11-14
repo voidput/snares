@@ -77,6 +77,33 @@ const RESULT_TABS: TabDef<ResultTab>[] = [
 
 const RESULTS_OPEN_KEY = "snares.results.open";
 
+/**
+ * How the workspace is arranged, from the width on hand.
+ * wide: setup left, result right, map between. docked: one sidebar carries both, the map gets
+ * the rest. stacked: phone, everything in a column.
+ */
+type LayoutMode = "wide" | "docked" | "stacked";
+const WIDE_QUERY = "(min-width: 1600px)";
+const STACKED_QUERY = "(max-width: 820px)";
+
+function readLayout(): LayoutMode {
+  if (window.matchMedia(STACKED_QUERY).matches) return "stacked";
+  return window.matchMedia(WIDE_QUERY).matches ? "wide" : "docked";
+}
+
+function useLayoutMode(): LayoutMode {
+  const [mode, setMode] = useState<LayoutMode>(readLayout);
+  useEffect(() => {
+    const queries = [window.matchMedia(WIDE_QUERY), window.matchMedia(STACKED_QUERY)];
+    const onChange = () => setMode(readLayout());
+    for (const q of queries) q.addEventListener("change", onChange);
+    return () => {
+      for (const q of queries) q.removeEventListener("change", onChange);
+    };
+  }, []);
+  return mode;
+}
+
 /** Imports are read whole into memory, so cap what gets read. */
 const MAX_IMPORT_BYTES = 2_000_000;
 
@@ -119,6 +146,8 @@ export function App() {
   const importInput = useRef<HTMLInputElement>(null);
   const [setupTab, setSetupTab] = useState<SetupTab>("route");
   const [resultTab, setResultTab] = useState<ResultTab>("details");
+  const [dockSide, setDockSide] = useState<"setup" | "result">("setup");
+  const layout = useLayoutMode();
   const [resultsOpen, setResultsOpen] = useState(() => {
     try {
       return browserStorage()?.getItem(RESULTS_OPEN_KEY) !== "0";
@@ -392,63 +421,9 @@ export function App() {
   const coverage = leg?.evaluation.coverage ?? 0;
   const status = !leg || leg.routes.length === 0 ? "none" : leg.corridor.feasible ? "full" : coverage > 0 ? "partial" : "miss";
 
-  return (
-    <div className="app">
-      <header>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true" />
-          <h1>Snares</h1>
-          <span className="tagline">quantum interdiction planner</span>
-        </div>
-        <nav className="systems" aria-label="Star system">
-          {Array.isArray(universe.systems) &&
-            universe.systems.map((s) => (
-              <button
-                key={s.name}
-                className={s.name === system.name ? "on" : undefined}
-                onClick={() => {
-                  if (s.name === system.name) return;
-                  setStartId(undefined);
-                  setMenu(undefined);
-                  update({ system: s.name, originIds: [], destIds: [], activeLeg: 0, weights: {} });
-                }}
-              >
-                {s.name}
-              </button>
-            ))}
-        </nav>
-        <div className="header-right">
-          <span className="build" title={`Game data extracted ${universe.extracted.slice(0, 10)}`}>
-            game build {universe.build}
-          </span>
-          <a className="coffee" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
-            Buy me a coffee
-          </a>
-          <button className="ghost" onClick={() => copy("link", window.location.href)}>
-            {copied === "link" ? "Link copied" : "Copy link"}
-          </button>
-          <button
-            className={armed === "reset" ? "ghost reset armed" : "ghost reset"}
-            onClick={resetAll}
-            title="Clear the route, ship, weights, law settings, scan results and pasted position. Saved plans stay."
-          >
-            {armed === "reset" ? "Click again to reset" : "Reset all"}
-          </button>
-        </div>
-      </header>
-
-      <TabList
-        name="setup"
-        label="Plan setup"
-        orientation="vertical"
-        className="rail"
-        tabs={SETUP_TABS.map((t) => (t.id === "plans" && plans.length > 0 ? { ...t, badge: plans.length } : t))}
-        value={setupTab}
-        onChange={setSetupTab}
-      />
-
-      <aside className="panel setup" aria-label="Plan setup">
-        <TabPanel name="setup" id={setupTab} className="panel-scroll">
+  // The three blocks every layout arranges: what you set, the verdict, and what you get.
+  const setupContent = (
+    <>
           {setupTab === "scout" && (
             <>
         <section>
@@ -939,21 +914,9 @@ export function App() {
         </section>
             </>
           )}
-        </TabPanel>
-      </aside>
-
-      <aside className={resultsOpen ? "panel results" : "panel results closed"} aria-label="Result">
-        <button
-          className="panel-toggle"
-          onClick={toggleResults}
-          aria-expanded={resultsOpen}
-          aria-label={resultsOpen ? "Hide result panel" : "Show result panel"}
-          title={resultsOpen ? "Hide result panel" : "Show result panel"}
-        >
-          {resultsOpen ? <PanelRightClose size={16} aria-hidden /> : <PanelRightOpen size={16} aria-hidden />}
-        </button>
-        {resultsOpen && (
-          <>
+    </>
+  );
+  const verdictHead = (
         <section className={`verdict-head status-${status}`}>
           <h2>Position</h2>
           {legs.length > 1 && (
@@ -999,10 +962,9 @@ export function App() {
             </>
           )}
         </section>
-            {leg && status !== "none" && (
-              <>
-                <TabList name="result" label="Result" className="result-tabs" tabs={RESULT_TABS} value={resultTab} onChange={setResultTab} />
-                <TabPanel name="result" id={resultTab} className="panel-scroll">
+  );
+  const resultContent = (
+    <>
                   {resultTab === "details" && (
                     <section>
               <dl className="facts">
@@ -1274,12 +1236,115 @@ export function App() {
           </section>
                     </>
                   )}
-                </TabPanel>
+    </>
+  );
+
+  const hasResult = !!leg && status !== "none";
+  const railTabs = SETUP_TABS.map((t) => (t.id === "plans" && plans.length > 0 ? { ...t, badge: plans.length } : t));
+  // Docked: one rail carries both groups, and the panel shows whichever was picked last.
+  const dockTabs: TabDef<SetupTab | ResultTab>[] = [...railTabs, ...RESULT_TABS.map((t) => ({ ...t, disabled: !hasResult }))];
+  const dockShowsResult = dockSide === "result" && hasResult;
+  const dockValue = dockShowsResult ? resultTab : setupTab;
+  const pickDockTab = (id: SetupTab | ResultTab) => {
+    const setup = SETUP_TABS.find((t) => t.id === id);
+    if (setup) {
+      setSetupTab(setup.id);
+      setDockSide("setup");
+    } else {
+      setResultTab(id as ResultTab);
+      setDockSide("result");
+    }
+  };
+
+  return (
+    <div className={`app layout-${layout}`}>
+      <header>
+        <div className="brand">
+          <span className="brand-mark" aria-hidden="true" />
+          <h1>Snares</h1>
+          <span className="tagline">quantum interdiction planner</span>
+        </div>
+        <nav className="systems" aria-label="Star system">
+          {Array.isArray(universe.systems) &&
+            universe.systems.map((s) => (
+              <button
+                key={s.name}
+                className={s.name === system.name ? "on" : undefined}
+                onClick={() => {
+                  if (s.name === system.name) return;
+                  setStartId(undefined);
+                  setMenu(undefined);
+                  update({ system: s.name, originIds: [], destIds: [], activeLeg: 0, weights: {} });
+                }}
+              >
+                {s.name}
+              </button>
+            ))}
+        </nav>
+        <div className="header-right">
+          <span className="build" title={`Game data extracted ${universe.extracted.slice(0, 10)}`}>
+            game build {universe.build}
+          </span>
+          <a className="coffee" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
+            Buy me a coffee
+          </a>
+          <button className="ghost" onClick={() => copy("link", window.location.href)}>
+            {copied === "link" ? "Link copied" : "Copy link"}
+          </button>
+          <button
+            className={armed === "reset" ? "ghost reset armed" : "ghost reset"}
+            onClick={resetAll}
+            title="Clear the route, ship, weights, law settings, scan results and pasted position. Saved plans stay."
+          >
+            {armed === "reset" ? "Click again to reset" : "Reset all"}
+          </button>
+        </div>
+      </header>
+
+      {layout === "docked" ? (
+        <>
+          <TabList name="dock" label="Plan setup and result" orientation="vertical" className="rail docked" tabs={dockTabs} value={dockValue} onChange={pickDockTab} />
+          <aside className="panel setup" aria-label="Plan">
+            {verdictHead}
+            <TabPanel name="dock" id={dockValue} className="panel-scroll">
+              {dockShowsResult ? resultContent : setupContent}
+            </TabPanel>
+          </aside>
+        </>
+      ) : (
+        <>
+          <TabList name="setup" label="Plan setup" orientation="vertical" className="rail" tabs={railTabs} value={setupTab} onChange={setSetupTab} />
+          <aside className="panel setup" aria-label="Plan setup">
+            <TabPanel name="setup" id={setupTab} className="panel-scroll">
+              {setupContent}
+            </TabPanel>
+          </aside>
+          <aside className={resultsOpen ? "panel results" : "panel results closed"} aria-label="Result">
+            <button
+              className="panel-toggle"
+              onClick={toggleResults}
+              aria-expanded={resultsOpen}
+              aria-label={resultsOpen ? "Hide result panel" : "Show result panel"}
+              title={resultsOpen ? "Hide result panel" : "Show result panel"}
+            >
+              {resultsOpen ? <PanelRightClose size={16} aria-hidden /> : <PanelRightOpen size={16} aria-hidden />}
+            </button>
+            {resultsOpen && (
+              <>
+                {verdictHead}
+                {hasResult && (
+                  <>
+                    <TabList name="result" label="Result" className="result-tabs" tabs={RESULT_TABS} value={resultTab} onChange={setResultTab} />
+                    <TabPanel name="result" id={resultTab} className="panel-scroll">
+                      {resultContent}
+                    </TabPanel>
+                  </>
+                )}
               </>
             )}
-          </>
-        )}
-      </aside>
+          </aside>
+        </>
+      )}
 
       <main>
         <MapView

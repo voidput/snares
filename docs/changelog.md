@@ -6,6 +6,13 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Layout follows screen width
+
+Type: Changed. Effort: L2.
+
+- Three arrangements picked from the width on hand ([architecture](architecture.md)): wide (1600px and up) keeps setup left and result right; docked (821 to 1599px) puts both in one sidebar with a single rail and the verdict pinned on top, so the map keeps the width; stacked (820px and under) for phones.
+- Panel widths scale with the screen on wide monitors. Switching happens live on resize; the open tab carries over.
+
 ## 2026-11-14 — Mode switch labels and law lines
 
 Type: Fixed. Effort: L1.

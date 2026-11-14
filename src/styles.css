@@ -1252,16 +1252,47 @@ button.panel-toggle:hover:not(:disabled) {
   transform: none;
 }
 
-@media (max-width: 1180px) {
-  .app {
-    grid-template-columns: 60px 288px minmax(0, 1fr) auto;
-  }
-  .panel.results {
-    width: 304px;
-  }
-  .panel.results.closed {
-    width: 44px;
-  }
+/* Wide monitor: panel widths grow a little with the screen. */
+.app.layout-wide {
+  grid-template-columns: 68px clamp(320px, 19vw, 400px) minmax(0, 1fr) auto;
+}
+.layout-wide .panel.results {
+  width: clamp(340px, 20vw, 420px);
+}
+.layout-wide .panel.results.closed {
+  width: 44px;
+}
+
+/* Mid-size screen: one sidebar holds setup and result, so the map keeps the width. */
+.app.layout-docked {
+  grid-template:
+    "header header header" auto
+    "rail setup main" minmax(0, 1fr)
+    "footer footer footer" auto
+    / 68px clamp(320px, 27vw, 380px) minmax(0, 1fr);
+}
+.layout-docked .verdict-head {
+  flex: none;
+  padding-right: 14px;
+}
+/* A gap and a rule set the result tabs apart from the setup tabs above them. */
+.rail.docked [role="tab"]:nth-child(5) {
+  margin-top: 13px;
+}
+.rail.docked [role="tab"]:nth-child(5)::before {
+  content: "";
+  position: absolute;
+  top: -7px;
+  left: 8px;
+  right: 8px;
+  border-top: 1px solid var(--line-2);
+}
+.rail [role="tab"]:disabled {
+  opacity: 0.35;
+}
+.rail [role="tab"]:disabled:hover {
+  background: transparent;
+  color: var(--muted);
 }
 
 /* Phone: map, then the answer, then the setup tabs as a strip over their panel. */
@@ -1302,11 +1333,6 @@ button.panel-toggle:hover:not(:disabled) {
   flex: none;
   width: 16px;
   height: 16px;
-}
-@media (min-width: 821px) and (max-width: 1180px) {
-  .result-tabs [role="tab"] svg {
-    display: none;
-  }
 }
 header button,
 header .coffee {
