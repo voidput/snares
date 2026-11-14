@@ -16,7 +16,7 @@ Snares is a public Star Citizen fan site built on data read from the game's file
 
 - Ship `src/brand/MadeByTheCommunity_White.png`, byte-identical to the fankit original (sha256 `1a146fa2…a50b`), and scale it with CSS only.
 - Show it in a persistent site footer bar at 40 px, full opacity, with no filter, shadow, border or transform, beside a one-line trademark notice at 14 px (above the 10pt floor).
-- CIG's full disclaimer, verbatim, is one click away in the footer's Legal panel, also at 14 px. The mark and the short notice never move into the panel.
+- CIG's full disclaimer, verbatim, is one click away in the footer's More panel, also at 14 px. The mark and the short notice never move into the panel.
 - `NOTICE.md` carves the mark out of any source licence and lists the conditions a fork inherits.
 - No other fankit content.
 - `src/brand/fankit.test.ts` fails the build if the mark's bytes change, the disclaimer is reworded, a size drops below its floor, the mark gains a CSS effect, or the footer is unwired. CI runs it before every deploy.

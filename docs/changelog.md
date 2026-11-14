@@ -6,6 +6,13 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Footer after RSI+'s
+
+Type: Changed. Effort: L1.
+
+- Footer is one slim row: Fankit mark, the unofficial line, game build, Coffee, More. More unfolds the full CIG disclaimer and the referral code (copy, Enlist). Mark and notice keep their sizes and stay in the always-visible row ([decision](decisions/star-citizen-fankit-compliance.md)).
+- Buy me a coffee and the game build leave the header; the Support section leaves the Plans tab. Links live in `src/lib/support.ts`.
+
 ## 2026-11-14 — Blank page when the route was emptied
 
 Type: Fixed. Effort: L1.
