@@ -41,6 +41,7 @@ file. Runs on GitHub Pages.
 - **Map**: pan, zoom from system scale down to the 20 km snare, rotate into 3D.
 - **Blocked routes** flagged when the straight line passes through a body.
 - The plan lives in the URL, so a link is a share.
+- Save plans by name in the browser and switch between them; export and import them as JSON.
 
 Stanton, Pyro and Nyx. Positions, arrival and obstruction radii, snare radius
 and drive stats all come from the game's own files, by way of

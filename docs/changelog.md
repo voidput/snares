@@ -1,10 +1,18 @@
 ---
 title: Changelog
 tags: [changelog]
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Changelog
+
+## 2026-11-14 — Saved plans, JSON import/export, reset all
+
+Type: Added. Effort: L2.
+
+- Plans section: save the plan on screen under a name, switch between saved plans, delete them. Kept in `localStorage` (`snares.plans.v1`), this browser only ([architecture](architecture.md)).
+- Export all saved plans (or the current one) as a JSON file; import merges without overwriting and skips plans already present.
+- Reset all in the header: back to a blank plan in the current system. Saved plans stay. Two presses, as does deleting a plan.
 
 ## 2026-11-13 — Fankit mark and disclaimer
 

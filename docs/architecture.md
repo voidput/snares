@@ -1,7 +1,7 @@
 ---
 title: Architecture
 tags: [architecture, solver, data]
-updated: 2026-11-13
+updated: 2026-11-14
 ---
 
 # Architecture
@@ -22,6 +22,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/plan.ts` | Picked locations to solved legs: spreads, route changes, obstruction, approach lines. |
 | `src/lib/kinematics.ts` | Quantum travel time estimate. |
 | `src/lib/share.ts` | Plan state to and from the URL hash. |
+| `src/lib/plans.ts` | Saved plans: `localStorage` list, JSON export file, import with validation (`sanitizeState` runs every plan through the link codec, so a file gets the same limits as a link). |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
 | `src/components/MapView.tsx` | Canvas 2D map with an orthographic camera (pan, zoom, yaw, pitch). |
 | `src/components/LocationPicker.tsx` | Type-to-filter location list. |

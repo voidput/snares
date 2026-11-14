@@ -201,6 +201,79 @@ header {
   align-items: center;
   gap: 12px;
 }
+.plan-save {
+  display: flex;
+  gap: 6px;
+}
+.plan-save input {
+  flex: 1;
+  min-width: 0;
+}
+.plans {
+  list-style: none;
+  margin: 8px 0 0;
+  padding: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  border: 1px solid var(--line);
+}
+.plans li {
+  display: flex;
+  align-items: stretch;
+  border-left: 2px solid transparent;
+}
+.plans li + li {
+  border-top: 1px solid var(--line);
+}
+.plans li.on {
+  border-left-color: var(--accent);
+  background: rgba(var(--accent-rgb), 0.08);
+}
+.plan-open {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  padding: 6px 8px;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+}
+.plan-name {
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.plan-meta {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 11px;
+  font-weight: 400;
+}
+.plan-delete {
+  flex: none;
+  min-width: 34px;
+  border: 0;
+  border-radius: 0;
+  color: var(--dim);
+}
+.plan-delete:hover,
+button.plan-delete.armed {
+  color: var(--bad);
+}
+.plan-io {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+button.reset.armed {
+  color: var(--bad);
+  border-color: var(--bad);
+}
 .build {
   color: var(--dim);
   font-family: var(--mono);

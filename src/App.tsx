@@ -20,6 +20,7 @@ import {
   type Catch,
   type SpreadMode,
 } from "./lib/plan";
+import { exportPlans, loadPlans, mergePlans, parsePlanFile, storePlans, upsertPlan, type SavedPlan } from "./lib/plans";
 import { decodeState, DEFAULT_STATE, encodeState, type PlanState } from "./lib/share";
 import { parseShowLocation } from "./lib/showlocation";
 import type { Body, Universe } from "./lib/types";
@@ -53,6 +54,18 @@ const SPREADS: { label: string; value: SpreadMode }[] = [
   { label: "100 km", value: 100_000 },
 ];
 
+/** Imports are read whole into memory, so cap what gets read. */
+const MAX_IMPORT_BYTES = 2_000_000;
+
+/** Storage can throw on access alone when the browser blocks site data. */
+function browserStorage(): Storage | undefined {
+  try {
+    return window.localStorage;
+  } catch {
+    return undefined;
+  }
+}
+
 function initialState(): PlanState {
   const hash = window.location.hash;
   return hash.length > 1 ? decodeState(hash) : { ...DEFAULT_STATE, ...EXAMPLE };
@@ -75,6 +88,12 @@ export function App() {
     total: number;
     results: { destId: string; best: Catch; value: number; watched: boolean }[];
   }>();
+  /** What a second press will wipe: "reset", or the id of a saved plan. */
+  const [armed, setArmed] = useState<string>();
+  const [plans, setPlans] = useState<SavedPlan[]>(() => loadPlans(browserStorage()));
+  const [planName, setPlanName] = useState("");
+  const [planNote, setPlanNote] = useState<string>();
+  const importInput = useRef<HTMLInputElement>(null);
   const scanRun = useRef(0);
   const map = useRef<MapHandle>(null);
 
@@ -224,6 +243,99 @@ export function App() {
     };
   };
 
+  // A first press arms a destructive button, a second within a few seconds goes through.
+  useEffect(() => {
+    if (!armed) return;
+    const timer = window.setTimeout(() => setArmed(undefined), 4000);
+    return () => window.clearTimeout(timer);
+  }, [armed]);
+
+  /** Drop everything worked out for the plan on screen, ready for a different one. */
+  const clearWork = () => {
+    scanRun.current++;
+    setArmed(undefined);
+    setLocationText("");
+    setStartId(undefined);
+    setApproachIndex(0);
+    setMenu(undefined);
+    setCatches(undefined);
+    setAllChips(false);
+    setScan(undefined);
+  };
+
+  /** Back to a blank plan: every setting, weight, scan result and pasted position. Saved plans stay. */
+  const resetAll = () => {
+    if (armed !== "reset") {
+      setArmed("reset");
+      return;
+    }
+    clearWork();
+    setState({ ...DEFAULT_STATE, system: system?.name ?? DEFAULT_STATE.system });
+    setPlanName("");
+    map.current?.fitSystem();
+  };
+
+  const commitPlans = (next: SavedPlan[], note: string) => {
+    setPlans(next);
+    setPlanNote(
+      storePlans(browserStorage(), next) ? note : "This browser is blocking storage, so plans last only until the tab closes. Export to keep them.",
+    );
+  };
+
+  const defaultPlanName =
+    dests.length > 0
+      ? `${origins.length} ${origins.length === 1 ? "origin" : "origins"} → ${dests.map((d) => d.name).join(" → ")}`
+      : `${system?.name ?? "New"} plan`;
+
+  const savePlan = () => {
+    const name = planName.trim() || defaultPlanName;
+    const next = upsertPlan(plans, name, state);
+    commitPlans(next, next.length === plans.length ? `Updated "${name}".` : `Saved "${name}".`);
+    setPlanName("");
+  };
+
+  const openPlan = (plan: SavedPlan) => {
+    clearWork();
+    setState(plan.state);
+    setPlanNote(undefined);
+  };
+
+  const deletePlan = (plan: SavedPlan) => {
+    if (armed !== plan.id) {
+      setArmed(plan.id);
+      return;
+    }
+    setArmed(undefined);
+    commitPlans(plans.filter((p) => p.id !== plan.id), `Deleted "${plan.name}".`);
+  };
+
+  const exportAll = () => {
+    const now = new Date();
+    const list = plans.length > 0 ? plans : [{ name: defaultPlanName, savedAt: now.toISOString(), state }];
+    const url = URL.createObjectURL(new Blob([exportPlans(list, now)], { type: "application/json" }));
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = `snares-plans-${now.toISOString().slice(0, 10)}.json`;
+    link.click();
+    URL.revokeObjectURL(url);
+    setPlanNote(`Exported ${list.length} ${list.length === 1 ? "plan" : "plans"}.`);
+  };
+
+  const importFile = async (file: File | undefined) => {
+    if (!file) return;
+    try {
+      if (file.size > MAX_IMPORT_BYTES) throw new Error("That file is too large to be a plan file.");
+      const incoming = parsePlanFile(await file.text());
+      const next = mergePlans(plans, incoming);
+      const added = next.length - plans.length;
+      commitPlans(next, added > 0 ? `Imported ${added} ${added === 1 ? "plan" : "plans"}.` : "Those plans are already saved here.");
+    } catch (err) {
+      setPlanNote(`Import failed. ${err instanceof Error ? err.message : ""}`.trim());
+    } finally {
+      if (importInput.current) importInput.current.value = "";
+    }
+  };
+
   const copy = (label: string, text: string) => {
     void navigator.clipboard?.writeText(text).then(() => {
       setCopied(label);
@@ -274,10 +386,73 @@ export function App() {
           <button className="ghost" onClick={() => copy("link", window.location.href)}>
             {copied === "link" ? "Link copied" : "Copy link"}
           </button>
+          <button
+            className={armed === "reset" ? "ghost reset armed" : "ghost reset"}
+            onClick={resetAll}
+            title="Clear the route, ship, weights, law settings, scan results and pasted position. Saved plans stay."
+          >
+            {armed === "reset" ? "Click again to reset" : "Reset all"}
+          </button>
         </div>
       </header>
 
       <aside>
+        <section>
+          <h2>Plans</h2>
+          <div className="plan-save">
+            <input
+              type="text"
+              value={planName}
+              maxLength={60}
+              placeholder={defaultPlanName}
+              aria-label="Plan name"
+              onChange={(e) => setPlanName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") savePlan();
+              }}
+            />
+            <button onClick={savePlan}>Save</button>
+          </div>
+          {plans.length > 0 && (
+            <ul className="plans">
+              {plans.map((plan) => (
+                <li key={plan.id} className={encodeState(plan.state) === encoded ? "on" : undefined}>
+                  <button className="plan-open" onClick={() => openPlan(plan)} title={`Open "${plan.name}"`}>
+                    <span className="plan-name">{plan.name}</span>
+                    <span className="plan-meta">
+                      {plan.state.system} · {plan.state.mode === "dampen" ? "dampen" : "snare"} · {plan.savedAt.slice(0, 10)}
+                    </span>
+                  </button>
+                  <button
+                    className={armed === plan.id ? "ghost plan-delete armed" : "ghost plan-delete"}
+                    onClick={() => deletePlan(plan)}
+                    aria-label={`Delete "${plan.name}"`}
+                  >
+                    {armed === plan.id ? "Sure?" : "×"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="plan-io">
+            <button className="ghost" onClick={exportAll}>
+              {plans.length > 0 ? "Export all (JSON)" : "Export this plan (JSON)"}
+            </button>
+            <button className="ghost" onClick={() => importInput.current?.click()}>
+              Import
+            </button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => void importFile(e.target.files?.[0])}
+            />
+          </div>
+          <p className="note" role="status">
+            {planNote ?? "Saved plans live in this browser only. Export to back them up or hand them to someone else."}
+          </p>
+        </section>
         <section>
           <h2>Scout {system.name}</h2>
           <button className="catch-go" onClick={runScan} disabled={!!scanned && scanned.done < scanned.total}>
