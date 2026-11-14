@@ -764,17 +764,19 @@ export function App() {
           </div>
 
           <label className="field-label">Plan for</label>
-          <div className="segmented">
+          <div className="segmented mode">
             <button
               className={!dampening ? "on" : undefined}
               disabled={!!ship && ship.snareRadius === 0}
               title={ship && ship.snareRadius === 0 ? `${ship.name} has no snare` : undefined}
               onClick={() => update({ mode: "snare" })}
             >
-              Snare · pull from quantum
+              <span className="mode-name">Snare</span>
+              <span className="mode-what">pull from quantum</span>
             </button>
             <button className={dampening ? "on" : undefined} onClick={() => update({ mode: "dampen", activeLeg: activeLeg })}>
-              Dampen · hold at arrival
+              <span className="mode-name">Dampen</span>
+              <span className="mode-what">hold at arrival</span>
             </button>
           </div>
           <p className="note">

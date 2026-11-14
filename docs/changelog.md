@@ -6,6 +6,13 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Mode switch labels and law lines
+
+Type: Fixed. Effort: L1.
+
+- Snare / Dampen switch stacks name over what it does, so labels no longer truncate in the narrower setup panel.
+- Law lines drop the coloured side stripe: state shows as a dot on the label inside a hairline box.
+
 ## 2026-11-14 — Two-panel workspace
 
 Type: Changed. Effort: L2.

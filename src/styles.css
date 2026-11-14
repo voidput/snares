@@ -906,26 +906,44 @@ h2 + .check-row {
 .law-line {
   margin: 0;
   padding: 6px 9px;
-  border-left: 2px solid var(--line-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
   background: var(--panel-2);
   font-size: 12px;
   color: var(--muted);
 }
+/* State sits on the label: a dot and its colour, not a stripe down the side. */
 .law-line b {
-  display: inline-block;
-  min-width: 68px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 82px;
   color: var(--text);
   font-weight: 600;
 }
-.law-line.good {
-  border-left-color: var(--good);
+.law-line b::before {
+  content: "";
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--dim);
+}
+.law-line.good b::before {
+  background: var(--good);
 }
 .law-line.bad {
-  border-left-color: var(--bad);
-  background: rgba(255, 93, 93, 0.07);
+  border-color: rgb(239 68 68 / 0.4);
+  background: rgb(239 68 68 / 0.08);
 }
-.law-line.warnish {
-  border-left-color: var(--snare);
+.law-line.bad b {
+  color: #fca5a5;
+}
+.law-line.bad b::before {
+  background: var(--bad);
+}
+.law-line.warnish b::before {
+  background: var(--snare);
 }
 .tag {
   font-size: 10px;
@@ -1299,4 +1317,22 @@ header .coffee {
   .map-hint {
     display: none;
   }
+}
+
+/* Mode switch: name over what it does, so neither label is cut at any panel width. */
+.segmented.mode button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 6px 4px;
+  white-space: normal;
+  line-height: 1.25;
+}
+.mode-name {
+  font-weight: 600;
+}
+.mode-what {
+  font-size: 11px;
+  font-weight: 400;
 }
