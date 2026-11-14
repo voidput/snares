@@ -22,8 +22,9 @@ import {
   type Catch,
   type SpreadMode,
 } from "./lib/plan";
+import { ownHold, planFleet, type FleetShip } from "./lib/fleet";
 import { exportPlans, loadPlans, mergePlans, parsePlanFile, storePlans, upsertPlan, type SavedPlan } from "./lib/plans";
-import { decodeState, DEFAULT_STATE, encodeState, type PlanState } from "./lib/share";
+import { decodeState, DEFAULT_STATE, encodeState, MAX_FLEET, type FleetRole, type PlanState } from "./lib/share";
 import { parseShowLocation } from "./lib/showlocation";
 import type { Body, Universe } from "./lib/types";
 import { distance, dot, length, sub } from "./lib/vec";
@@ -69,6 +70,13 @@ const RESULT_TABS: TabDef<ResultTab>[] = [
   { id: "fly", label: "Fly in", icon: Navigation },
   { id: "verify", label: "Verify", icon: ScanSearch },
   { id: "timing", label: "Timing", icon: Timer },
+];
+
+const ROLE_LABEL: Record<FleetShip["role"], string> = { lead: "Lead", split: "Split", hold: "Hold", backstop: "Backstop" };
+const ROLE_OPTIONS: { value: FleetRole; label: string }[] = [
+  { value: "split", label: "Split the routes" },
+  { value: "hold", label: "Hold the catch" },
+  { value: "backstop", label: "Backstop" },
 ];
 
 const RESULTS_OPEN_KEY = "snares.results.open";
@@ -206,7 +214,32 @@ export function App() {
     [bodies, state.originIds, state.destIds, state.spread, state.drift, state.radius, state.placement, state.mode, state.dampen, standoff],
   );
   const activeLeg = Math.min(state.activeLeg, Math.max(0, legs.length - 1));
-  const leg = legs[activeLeg];
+  const baseLeg = legs[activeLeg];
+
+  // The fleet: the lead as solved, plus whatever ships were added, each with a leg of its own.
+  const interdictors = universe?.interdictors;
+  const fleetPlan = useMemo(() => {
+    if (!baseLeg) return undefined;
+    const lead = { name: interdictors?.find((i) => i.id === state.ship)?.name ?? "Custom", radius: state.radius, dampen: state.dampen };
+    const members = state.fleet.map((m) => {
+      const found = interdictors?.find((i) => i.id === m.ship);
+      return { role: m.role, device: found ? { name: found.name, radius: found.snareRadius, dampen: found.dampenRange } : lead };
+    });
+    return planFleet(baseLeg, lead, members, { bodies, placement: state.placement, standoff });
+  }, [baseLeg, interdictors, state.ship, state.radius, state.dampen, state.fleet, bodies, state.placement, standoff]);
+  const [shipIndex, setShipIndex] = useState(0);
+  const ships = fleetPlan?.ships ?? [];
+  // An idle ship has no spot to look at, so focus falls back to the lead.
+  const focus = ships[shipIndex] && !ships[shipIndex].idle ? shipIndex : 0;
+  const focusShip = ships[focus];
+  // Everything below reads `leg`: with a fleet, that is the ship in focus.
+  const leg = focusShip?.leg ?? baseLeg;
+  const fleetOn = ships.length > 1;
+  const others = useMemo(
+    () => ships.map((sh, i) => ({ sh, i })).filter(({ sh, i }) => i !== focus && !sh.idle).map(({ sh, i }) => ({ leg: sh.leg, label: `${i + 1} ${ROLE_LABEL[sh.role].toUpperCase()}` })),
+    [ships, focus],
+  );
+  const mapLegs = useMemo(() => legs.map((l, i) => (i === activeLeg && leg ? leg : l)), [legs, activeLeg, leg]);
 
   const start = startId ? byId.get(startId) : undefined;
   const routesIn = useMemo(
@@ -339,6 +372,7 @@ export function App() {
     setLocationText("");
     setStartId(undefined);
     setApproachIndex(0);
+    setShipIndex(0);
     setMenu(undefined);
     setCatches(undefined);
     setAllChips(false);
@@ -430,8 +464,18 @@ export function App() {
 
   const blockedBy = new Map<string, string[]>();
   for (const b of leg?.blocked ?? []) blockedBy.set(b.routeId, [...(blockedBy.get(b.routeId) ?? []), b.by.name]);
-  const coverage = leg?.evaluation.coverage ?? 0;
-  const status = !leg || leg.routes.length === 0 ? "none" : leg.corridor.feasible ? "full" : coverage > 0 ? "partial" : "miss";
+  // With a fleet the verdict is the fleet's: each route counts its best net.
+  const coverage = (fleetOn ? fleetPlan?.coverage : leg?.evaluation.coverage) ?? 0;
+  const covered = fleetOn ? coverage >= 0.999 : !!leg?.corridor.feasible;
+  const status = !baseLeg || baseLeg.routes.length === 0 ? "none" : covered ? "full" : coverage > 0 ? "partial" : "miss";
+  const nets = ships.filter((sh) => !sh.idle && sh.role !== "hold").length;
+  const missed = fleetOn ? (fleetPlan?.routes.filter((r) => r.coverage < 0.999) ?? []) : [];
+  // What this view is about: the focused ship's own mode, which for a holder is dampening.
+  const spotDampening = leg?.mode === "dampen";
+  const own = leg && leg.mode === "snare" && focusShip && leg.routes.length > 0 ? ownHold(leg, focusShip.device.dampen) : undefined;
+  const addShip = (role: FleetRole) => {
+    if (state.fleet.length < MAX_FLEET) update({ fleet: [...state.fleet, { role }] });
+  };
 
   // The three blocks every layout arranges: what you set, the verdict, and what you get.
   const setupContent = (
@@ -812,6 +856,56 @@ export function App() {
           )}
         </section>
         <section>
+          <h2>Fleet</h2>
+          <p className="note first">
+            More than one ship? Add them and each gets its own spot. Ship 1 is yours, above.
+          </p>
+          {state.fleet.map((member, i) => (
+            <div key={i} className="fleet-row">
+              <span className="fleet-n">{i + 2}</span>
+              <select
+                aria-label={`Ship ${i + 2} role`}
+                value={member.role}
+                onChange={(e) => update({ fleet: state.fleet.map((m, j) => (j === i ? { ...m, role: e.target.value as FleetRole } : m)) })}
+              >
+                {ROLE_OPTIONS.map((r) => (
+                  <option key={r.value} value={r.value}>
+                    {r.label}
+                  </option>
+                ))}
+              </select>
+              <select
+                aria-label={`Ship ${i + 2} interdictor`}
+                value={member.ship ?? ""}
+                onChange={(e) => update({ fleet: state.fleet.map((m, j) => (j === i ? { ...m, ship: e.target.value || undefined } : m)) })}
+              >
+                <option value="">Same as ship 1</option>
+                {Array.isArray(universe.interdictors) &&
+                  universe.interdictors.map((x) => (
+                    <option key={x.id} value={x.id}>
+                      {x.name}
+                    </option>
+                  ))}
+              </select>
+              <button className="ghost icon" aria-label={`Remove ship ${i + 2}`} onClick={() => update({ fleet: state.fleet.filter((_, j) => j !== i) })}>
+                ×
+              </button>
+            </div>
+          ))}
+          <div className="fleet-add">
+            {ROLE_OPTIONS.map((r) => (
+              <button key={r.value} className="chip" disabled={state.fleet.length >= MAX_FLEET} onClick={() => addShip(r.value)}>
+                + {r.label.toLowerCase()}
+              </button>
+            ))}
+          </div>
+          <p className="note">
+            <b>Split</b>: another net, when one spot cannot cover every route. <b>Hold</b>: a dampener where a net's catch
+            comes to rest, so it cannot spool away. <b>Backstop</b>: a second net behind another, nearer the destination.
+            {dampening ? " While dampening, every extra ship is another dampener on the arrivals." : ""}
+          </p>
+        </section>
+        <section>
           <h2>Law</h2>
           <label className="check-row">
             <input type="checkbox" checked={state.careArmistice} onChange={(e) => update({ careArmistice: e.target.checked })} />
@@ -929,7 +1023,9 @@ export function App() {
               <div className="verdict">
                 <span className="verdict-value">{formatPercent(coverage)}</span>
                 <span className="verdict-text">
-                  {dampening
+                  {fleetOn
+                    ? `of ${dampening ? "arrivals held" : "routes covered"} by ${nets} ${nets === 1 ? "ship" : "ships"}${status === "full" ? ", in full" : ""}`
+                    : dampening
                     ? status === "full"
                       ? "of arrivals held, in full"
                       : "held — no spot reaches every arrival point"
@@ -940,19 +1036,70 @@ export function App() {
                         : "covered — these routes cannot be snared here"}
                 </span>
               </div>
-              {status !== "full" && dampening && (
+              {status !== "full" && !fleetOn && dampening && (
                 <p className="warn">
                   These routes drop out farther apart than the dampener reaches ({formatDistance(state.dampen)}) around{" "}
                   {leg.dest.name}'s arrival sphere ({formatDistance(arrivalOf(leg.dest))}). Showing the spot that holds the most.
-                  Cover fewer origins, or bring a second ship.
+                  Cover fewer origins, or{" "}
+                  <button className="linkish" onClick={() => addShip("split")}>
+                    add a second ship
+                  </button>
+                  .
                 </p>
               )}
-              {status !== "full" && !dampening && (
+              {status !== "full" && !fleetOn && !dampening && (
                 <p className="warn">
                   The routes spread wider than the snare before they clear {leg.dest.name}'s arrival radius (
-                  {formatDistance(arrivalOf(leg.dest))}). Showing the spot that catches the most. Drop an outlying origin, or
-                  tighten the departure spread.
+                  {formatDistance(arrivalOf(leg.dest))}). Showing the spot that catches the most. Drop an outlying origin,
+                  tighten the departure spread, or{" "}
+                  <button className="linkish" onClick={() => addShip("split")}>
+                    add a ship to split the routes
+                  </button>
+                  .
                 </p>
+              )}
+              {fleetOn && missed.length > 0 && (
+                <p className="warn">
+                  Not covered in full by any ship: {missed.slice(0, 4).map((r) => r.label).join(", ")}
+                  {missed.length > 4 ? ` and ${missed.length - 4} more` : ""}. Add a ship to split the routes, or drop an origin.
+                </p>
+              )}
+              {fleetOn && (
+                <>
+                  <div className="segmented ships" role="group" aria-label="Ship in focus">
+                    {ships.map((sh, i) => (
+                      <button
+                        key={i}
+                        className={i === focus ? "on" : undefined}
+                        disabled={sh.idle}
+                        title={sh.idle ? sh.note : `${sh.device.name}: ${ROLE_LABEL[sh.role].toLowerCase()}`}
+                        onClick={() => setShipIndex(i)}
+                      >
+                        <span className="mode-name">Ship {i + 1}</span>
+                        <span className="mode-what">{ROLE_LABEL[sh.role]}</span>
+                      </button>
+                    ))}
+                  </div>
+                  {focusShip && (
+                    <p className="note">
+                      Ship {focus + 1}, {focusShip.device.name}:{" "}
+                      {focusShip.role === "hold"
+                        ? `holds what ship ${(focusShip.supports ?? 0) + 1} pulls out, ${formatPercent(leg.evaluation.coverage)} of it.`
+                        : focusShip.role === "backstop"
+                          ? `second net behind ship ${(focusShip.supports ?? 0) + 1}, on the same ${leg.routes.length} ${leg.routes.length === 1 ? "route" : "routes"}.`
+                          : `covers ${leg.routes.length} of ${baseLeg?.routes.length ?? 0} routes${leg.corridor.feasible ? " in full" : ""}.`}
+                      {focusShip.note ? ` ${focusShip.note}` : ""}
+                    </p>
+                  )}
+                  {ships.some((sh) => sh.idle) && (
+                    <p className="note">
+                      {ships
+                        .map((sh, i) => (sh.idle ? `Ship ${i + 1} stands by: ${sh.note}` : ""))
+                        .filter(Boolean)
+                        .join(" ")}
+                    </p>
+                  )}
+                </>
               )}
             </>
           )}
@@ -991,7 +1138,7 @@ export function App() {
                         {leg.security.armistice.gap < 0
                           ? `Overlaps ${leg.security.armistice.body.name}'s zone by ${formatDistance(-leg.security.armistice.gap)}. Targets land inside it.`
                           : `${leg.security.armistice.body.name}'s zone is ${formatDistance(leg.security.armistice.gap)} from ${
-                              dampening ? "you" : "the snare's edge"
+                              spotDampening ? "you" : "the snare's edge"
                             }: about ${formatDuration(leg.security.armistice.gap / RUN_SPEED)} for a target running at ${RUN_SPEED} m/s.`}
                         {leg.security.armistice.gap >= 0 && leg.security.armistice.gap < state.standoff && " Closer than your stand-off."}
                       </p>
@@ -1027,7 +1174,28 @@ export function App() {
                 </div>
               )}
 
-              {leg.corridor.feasible && !dampening && (
+              {own && focusShip && (
+                <div className="law">
+                  <p className={own.gap === 0 ? "law-line good" : "law-line warnish"}>
+                    <b>Dampener</b>
+                    {own.gap === 0
+                      ? `Yours (${formatDistance(focusShip.device.dampen)}) reaches past the snare's edge: a pulled target cannot spool again.`
+                      : `Pulled targets stop about ${formatDistance(leg.reach)} from you, ${formatDistance(own.gap)} beyond your ${formatDistance(
+                          focusShip.device.dampen,
+                        )} dampener. Close that gap before they spool again, or post a holding ship there.`}
+                    {own.gap > 0 && !ships.some((sh) => sh.role === "hold" && sh.supports === focus) && state.fleet.length < MAX_FLEET && (
+                      <>
+                        {" "}
+                        <button className="linkish" onClick={() => addShip("hold")}>
+                          Add a holding ship
+                        </button>
+                      </>
+                    )}
+                  </p>
+                </div>
+              )}
+
+              {leg.corridor.feasible && !spotDampening && (!focusShip || focusShip.role === "lead" || focusShip.role === "split") && (
                 <div className="slider">
                   <input
                     type="range"
@@ -1054,8 +1222,8 @@ export function App() {
                 <thead>
                   <tr>
                     <th>Route</th>
-                    <th title={dampening ? "Distance from you to where this route drops out" : "Distance from the snare to the route's centre line"}>
-                      {dampening ? "Drops at" : "Off line"}
+                    <th title={spotDampening ? "Distance from you to where this route drops out" : "Distance from the snare to the route's centre line"}>
+                      {spotDampening ? "Drops at" : "Off line"}
                     </th>
                     <th title="Width of the route's possible paths at that point">Width</th>
                     <th>Cover</th>
@@ -1086,7 +1254,7 @@ export function App() {
               </div>
 
               <div className="buttons">
-                <button onClick={() => map.current?.focusSnare()}>Zoom to {dampening ? "position" : "snare"}</button>
+                <button onClick={() => map.current?.focusSnare()}>Zoom to {spotDampening ? "position" : "snare"}</button>
                 <button onClick={() => map.current?.fitPlan()}>Show routes</button>
                 <button onClick={() => map.current?.fitSystem()}>System</button>
                 <button onClick={() => map.current?.topDown()}>Top-down</button>
@@ -1177,12 +1345,12 @@ export function App() {
               <div className={`check ${playerCheck.evaluation.margin >= 0 ? "good" : "off"}`}>
                 <strong>
                   {playerCheck.evaluation.margin >= 0
-                    ? `In position — every ${dampening ? "arrival held" : "route covered"}, ${formatDistance(playerCheck.evaluation.margin)} to spare.`
-                    : `Out of position — ${dampening ? "holding" : "covering"} ${formatPercent(playerCheck.evaluation.coverage)} from here.`}
+                    ? `In position — every ${spotDampening ? "arrival held" : "route covered"}, ${formatDistance(playerCheck.evaluation.margin)} to spare.`
+                    : `Out of position — ${spotDampening ? "holding" : "covering"} ${formatPercent(playerCheck.evaluation.coverage)} from here.`}
                 </strong>
                 <span>
                   {formatDistance(playerCheck.toSnare)} from the planned spot
-                  {dampening
+                  {spotDampening
                     ? "."
                     : `: ${formatDistance(Math.abs(playerCheck.along))} ${playerCheck.along > 0 ? "too far out from" : "too close to"} ${leg.dest.name}, ${formatDistance(playerCheck.lateral)} off the corridor line.`}
                 </span>
@@ -1192,7 +1360,7 @@ export function App() {
                       const r = playerCheck.evaluation.routes[index];
                       return r.coverage >= 1 ? null : (
                         <li key={route.id}>
-                          {route.label}: {formatPercent(r.coverage)} — {dampening ? "drops out" : "line passes"} {formatDistance(r.offset)} away
+                          {route.label}: {formatPercent(r.coverage)} — {spotDampening ? "drops out" : "line passes"} {formatDistance(r.offset)} away
                         </li>
                       );
                     })}
@@ -1225,7 +1393,7 @@ export function App() {
                     const r = leg.evaluation.routes[index];
                     const total = Math.max(1, distance(route.origin, leg.dest.pos) - arrivalOf(leg.dest));
                     // A dampener waits at the end of the trip; a snare cuts it short.
-                    const covered = dampening ? total : Math.min(total, Math.max(0, distance(route.origin, leg.dest.pos) - r.along));
+                    const covered = spotDampening ? total : Math.min(total, Math.max(0, distance(route.origin, leg.dest.pos) - r.along));
                     return (
                       <tr key={route.id}>
                         <td>{route.label}</td>
@@ -1351,9 +1519,11 @@ export function App() {
         <MapView
           ref={map}
           bodies={bodies}
-          legs={legs}
+          legs={mapLegs}
           activeLeg={activeLeg}
-          dampen={state.dampen}
+          dampen={focusShip?.device.dampen ?? state.dampen}
+          others={others}
+          focusLabel={fleetOn && focusShip ? `${focus + 1} ${ROLE_LABEL[focusShip.role].toUpperCase()}` : undefined}
           showArmistice={state.careArmistice}
           showMonitored={state.careComms}
           player={player}

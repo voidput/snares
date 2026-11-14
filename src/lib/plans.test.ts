@@ -92,3 +92,15 @@ describe("plan files", () => {
     expect(mergePlans(merged, incoming)).toHaveLength(2);
   });
 });
+
+describe("fleet in plans", () => {
+  it("round-trips a fleet through a file and drops junk entries", () => {
+    const withFleet: PlanState = { ...plan, fleet: [{ role: "split", ship: "RSI_Mantis" }, { role: "hold" }, { role: "backstop", ship: "ANVL_Scorpius_Antares" }] };
+    expect(parsePlanFile(exportPlans(upsertPlan([], "Fleet", withFleet)))[0].state.fleet).toEqual(withFleet.fleet);
+    expect(sanitizeState({ fleet: [{ role: "nope" }, { role: "hold", ship: "a,b" }, 4, { role: "split", ship: "X_1" }] }).fleet).toEqual([
+      { role: "hold", ship: undefined },
+      { role: "split", ship: "X_1" },
+    ]);
+    expect(sanitizeState({ fleet: Array.from({ length: 9 }, () => ({ role: "split" })) }).fleet).toHaveLength(5);
+  });
+});

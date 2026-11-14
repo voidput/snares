@@ -20,6 +20,10 @@ interface Props {
   activeLeg: number;
   /** Dampener range, metres: drawn inside the snare, where pulled ships stay stuck. */
   dampen: number;
+  /** The fleet's other ships on the active leg: drawn, but not the one in focus. */
+  others?: { leg: Leg; label: string }[];
+  /** Name over the ship in focus, when it is one of several. */
+  focusLabel?: string;
   /** Draw armistice zones. */
   showArmistice: boolean;
   /** Draw monitored zones: where crime is seen. */
@@ -58,7 +62,7 @@ const DAMPEN = "#c48cff";
 const BAD = "#ef4444";
 const PLAYER = "#3ddc97";
 
-export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, showMonitored, player, approach, fitKey, onPick }: Props) {
+export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLabel, showArmistice, showMonitored, player, approach, fitKey, onPick }: Props) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const camera = useRef<Camera>({ center: [0, 0, 0], ppm: 1e-9, yaw: 0, pitch: 0 });
   const size = useRef({ w: 1, h: 1 });
@@ -68,8 +72,8 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, s
   const [readout, setReadout] = useState("");
 
   // Latest props for the draw loop, which outlives any one render.
-  const scene = useRef({ bodies, legs, activeLeg, dampen, showArmistice, showMonitored, player, approach });
-  scene.current = { bodies, legs, activeLeg, dampen, showArmistice, showMonitored, player, approach };
+  const scene = useRef({ bodies, legs, activeLeg, dampen, others, focusLabel, showArmistice, showMonitored, player, approach });
+  scene.current = { bodies, legs, activeLeg, dampen, others, focusLabel, showArmistice, showMonitored, player, approach };
 
   const project = useCallback((p: Vec3): [number, number] => {
     const c = camera.current;
@@ -379,11 +383,42 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, s
       labels.push({
         x: sx + 10,
         y: sy - Math.max(r, 14) - 8,
-        text: leg.mode === "dampen" ? "DAMPENER" : "SNARE",
+        text: s.focusLabel ?? (leg.mode === "dampen" ? "DAMPENER" : "SNARE"),
         color: tone,
         rank: -2,
         bold: true,
       });
+    }
+
+    // The rest of the fleet: each ship's routes, thin, and its sphere.
+    for (const other of s.others ?? []) {
+      const tone = other.leg.mode === "dampen" ? DAMPEN : SNARE;
+      const [ox, oy] = project(other.leg.snare);
+      const [dx, dy] = project(other.leg.dest.pos);
+      if (other.leg.mode === "snare") {
+        for (const route of other.leg.routes) {
+          const [rx, ry] = project(route.origin);
+          ctx.beginPath();
+          ctx.moveTo(rx, ry);
+          ctx.lineTo(dx, dy);
+          ctx.strokeStyle = ROUTE;
+          ctx.globalAlpha = 0.35;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+        }
+      }
+      const or = other.leg.reach * c.ppm;
+      ctx.beginPath();
+      ctx.arc(ox, oy, Math.max(or, 3), 0, Math.PI * 2);
+      ctx.fillStyle = other.leg.mode === "dampen" ? "rgba(196,140,255,0.10)" : "rgba(255,181,71,0.10)";
+      ctx.fill();
+      ctx.setLineDash([5, 3]);
+      ctx.strokeStyle = tone;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      labels.push({ x: ox + 10, y: oy + Math.max(or, 14) + 10, text: other.label, color: tone, rank: -2, bold: true });
     }
 
     if (s.approach) {

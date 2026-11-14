@@ -24,6 +24,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/share.ts` | Plan state to and from the URL hash. |
 | `src/lib/plans.ts` | Saved plans: `localStorage` list, JSON export file, import with validation (`sanitizeState` runs every plan through the link codec, so a file gets the same limits as a link). |
 | `src/lib/pick.ts` | What the pointer is on (`pickNearest`) and the order labels and picks follow (`mapRank`). |
+| `src/lib/fleet.ts` | Several ships on one leg: `planFleet` gives each a role and a `Leg`; `entryPoints` and `ownHold` say where a snare leaves its catch and whether a dampener reaches it. |
 | `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
 | `src/components/MapView.tsx` | Canvas 2D map with an orthographic camera (pan, zoom, yaw, pitch). |
@@ -46,6 +47,14 @@ A dampener pulls nothing out of quantum; it stops ships in range from spooling. 
 ## Best catch
 
 Given only a destination, `plan.ts: bestCatches` grows groups of origins one snare position covers in full: greedy from each candidate, adding the route nearest the group's centre line while the group stays coverable. Ranked by non-asteroid-base count. Heuristic, not a proven optimum.
+
+## Fleet
+
+`planFleet(base, lead, members, ctx)` takes the leg solved for one ship and returns one `Leg` per ship, in the order ships were added. Because every ship is a leg, nothing downstream knows about fleets: the UI swaps the focused ship's leg in for `leg`.
+
+- **Split**: greedy. The lead takes the largest group of routes it covers in full, the next net the largest group of what is left, and so on. Not proven optimal.
+- **Hold**: a dampen-mode leg whose drop points are the snare's entry points, the first point each route's line meets the snare sphere. Assumes a pulled ship stops where it enters the sphere.
+- **Backstop**: same routes as the ship ahead, one snare width plus 2 km nearer the destination, clamped to its corridor.
 
 ## Law
 

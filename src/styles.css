@@ -1463,3 +1463,55 @@ header button {
   font-size: 11px;
   font-weight: 400;
 }
+
+/* Fleet: extra ships in the Ship tab, and the ship switch over the result. */
+.fleet-row {
+  display: grid;
+  grid-template-columns: 18px minmax(0, 1fr) minmax(0, 1fr) 28px;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.fleet-row select {
+  min-width: 0;
+  width: 100%;
+}
+.fleet-n {
+  color: var(--dim);
+  font-family: var(--mono);
+  font-size: 12px;
+  text-align: center;
+}
+.fleet-add {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  margin-top: 8px;
+}
+.segmented.ships {
+  margin-top: 10px;
+}
+.segmented.ships button {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  padding: 5px 2px;
+  line-height: 1.25;
+}
+button.linkish {
+  display: inline;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: none;
+  color: var(--accent);
+  font: inherit;
+  font-weight: 600;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+button.linkish:hover:not(:disabled) {
+  background: none;
+  color: #8fe0ff;
+}

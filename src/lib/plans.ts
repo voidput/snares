@@ -1,4 +1,4 @@
-import { decodeState, DEFAULT_STATE, encodeState, type PlanState } from "./share";
+import { decodeState, DEFAULT_STATE, encodeState, type FleetRole, type PlanState } from "./share";
 
 /** A plan kept in this browser under a name, so several can be switched between. */
 export interface SavedPlan {
@@ -33,7 +33,7 @@ const strings = (v: unknown): string[] =>
  * back to the default, and the link codec then applies the same limits a shared link gets.
  */
 export function sanitizeState(raw: unknown): PlanState {
-  if (!isObject(raw)) return { ...DEFAULT_STATE, weights: {} };
+  if (!isObject(raw)) return { ...DEFAULT_STATE, weights: {}, fleet: [] };
   const r = raw;
   const weights: Record<string, number> = {};
   if (isObject(r.weights)) {
@@ -60,6 +60,12 @@ export function sanitizeState(raw: unknown): PlanState {
     standoff: num(r.standoff, DEFAULT_STATE.standoff),
     careArmistice: r.careArmistice !== false,
     careComms: r.careComms !== false,
+    fleet: Array.isArray(r.fleet)
+      ? r.fleet
+          .filter(isObject)
+          .filter((m) => m.role === "split" || m.role === "hold" || m.role === "backstop")
+          .map((m) => ({ role: m.role as FleetRole, ship: typeof m.ship === "string" && /^[\w-]+$/.test(m.ship) ? m.ship : undefined }))
+      : [],
   };
   return decodeState(encodeState(candidate));
 }

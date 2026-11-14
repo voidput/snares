@@ -27,7 +27,18 @@ export interface PlanState {
   careArmistice: boolean;
   /** Show who monitors a spot, and have the scout prefer unwatched ones. */
   careComms: boolean;
+  /** Ships beyond the lead: what each does, and which interdictor it is (the lead's when unset). */
+  fleet: FleetEntry[];
 }
+
+export type FleetRole = "split" | "hold" | "backstop";
+export interface FleetEntry {
+  role: FleetRole;
+  ship?: string;
+}
+export const MAX_FLEET = 5;
+const ROLE_CODE: Record<FleetRole, string> = { split: "s", hold: "h", backstop: "b" };
+const CODE_ROLE: Record<string, FleetRole> = { s: "split", h: "hold", b: "backstop" };
 
 export const DEFAULT_STATE: PlanState = {
   system: "Stanton",
@@ -45,6 +56,7 @@ export const DEFAULT_STATE: PlanState = {
   standoff: 30_000,
   careArmistice: true,
   careComms: true,
+  fleet: [],
 };
 
 export function encodeState(state: PlanState): string {
@@ -65,6 +77,7 @@ export function encodeState(state: PlanState): string {
   if (state.standoff !== DEFAULT_STATE.standoff) p.set("so", String(Math.round(state.standoff)));
   if (!state.careArmistice) p.set("ar", "0");
   if (!state.careComms) p.set("cm", "0");
+  if (state.fleet.length) p.set("f", state.fleet.map((m) => `${ROLE_CODE[m.role]}.${m.ship ?? ""}`).join(","));
   const weights = Object.entries(state.weights);
   if (weights.length) p.set("w", weights.map(([id, weight]) => `${id}:${weight}`).join(","));
   return p.toString();
@@ -102,6 +115,13 @@ export function decodeState(query: string): PlanState {
     standoff: p.get("so") !== null && Number.isFinite(Number(p.get("so"))) && Number(p.get("so")) >= 0 ? Number(p.get("so")) : DEFAULT_STATE.standoff,
     careArmistice: p.get("ar") !== "0",
     careComms: p.get("cm") !== "0",
+    fleet: list(p.get("f"))
+      .map((entry): FleetEntry | undefined => {
+        const role = CODE_ROLE[entry[0]];
+        return role && entry[1] === "." ? { role, ship: entry.slice(2) || undefined } : undefined;
+      })
+      .filter((m): m is FleetEntry => !!m)
+      .slice(0, MAX_FLEET),
     weights: Object.fromEntries(
       list(p.get("w"))
         .map((entry) => {

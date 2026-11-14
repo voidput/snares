@@ -6,6 +6,15 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Fleet planning and the Mantis dampener readout
+
+Type: Added. Effort: L3.
+
+- Fleet ([architecture](architecture.md)): up to five ships beside the lead, each with a role and its own interdictor. Split divides routes one spot cannot cover between nets; Hold puts a dampener where a net's catch comes to rest; Backstop lines a second net up behind another. While dampening, every extra ship is another dampener.
+- Each ship has a leg of its own, so Spot, Fly in, Verify and Timing work per ship. The verdict becomes the fleet's; a switch over the result picks the ship in focus; the map draws them all.
+- Snare and dampener together: a snare spot now says whether the ship's own dampener reaches what it pulls out (a Mantis: targets stop about 20 km out, 8 km beyond its 12 km dampener) and offers a holding ship.
+- Fleet travels in the link (`f`) and in saved plans.
+
 ## 2026-11-14 — Comm dead zones, steadier map picking, priority by traffic
 
 Type: Added, Fixed. Effort: L2.

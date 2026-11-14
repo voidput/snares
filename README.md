@@ -42,6 +42,7 @@ file. Runs on GitHub Pages.
 - **Blocked routes** flagged when the straight line passes through a body.
 - The plan lives in the URL, so a link is a share.
 - Save plans by name in the browser and switch between them; export and import them as JSON.
+- Plan for a fleet: split routes between ships, post a dampener on the catch, line up a backstop.
 
 Stanton, Pyro and Nyx. Positions, arrival and obstruction radii, snare radius
 and drive stats all come from the game's own files, by way of
