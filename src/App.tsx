@@ -963,7 +963,8 @@ export function App() {
           )}
         </section>
   );
-  const resultContent = (
+  // Built only when there is a position: every tab in here reads the active leg.
+  const resultContent = leg && status !== "none" ? (
     <>
                   {resultTab === "details" && (
                     <section>
@@ -1237,7 +1238,7 @@ export function App() {
                     </>
                   )}
     </>
-  );
+  ) : null;
 
   const hasResult = !!leg && status !== "none";
   const railTabs = SETUP_TABS.map((t) => (t.id === "plans" && plans.length > 0 ? { ...t, badge: plans.length } : t));

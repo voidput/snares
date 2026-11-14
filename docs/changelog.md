@@ -6,6 +6,12 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Blank page when the route was emptied
+
+Type: Fixed. Effort: L1.
+
+- Removing the destination while the Spot tab was open crashed the page: the result content was built even with no position to show. It is now built only when there is one. Regression from the layout change earlier the same day.
+
 ## 2026-11-14 — Layout follows screen width
 
 Type: Changed. Effort: L2.
