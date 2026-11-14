@@ -33,6 +33,11 @@ const EXAMPLE: Partial<PlanState> = {
 
 const CATCH_ORDER: Body["kind"][] = ["planet", "city", "jump", "station", "lagrange", "moon", "surface", "other", "asteroid", "star"];
 
+/** The same support links the other tools carry. */
+const BUYMEACOFFEE_URL = "https://buymeacoffee.com/zedwil";
+const REFERRAL = { name: "Zedwil", id: "STAR-9KJY-9C9H" };
+const REFERRAL_URL = `https://www.robertsspaceindustries.com/enlist?referral=${REFERRAL.id}`;
+
 /** How much the scout marks down a spot inside a monitored zone. */
 const WATCHED_PENALTY = 0.2;
 
@@ -262,6 +267,9 @@ export function App() {
           <span className="build" title={`Game data extracted ${universe.extracted.slice(0, 10)}`}>
             game build {universe.build}
           </span>
+          <a className="coffee" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
+            Buy me a coffee
+          </a>
           <button className="ghost" onClick={() => copy("link", window.location.href)}>
             {copied === "link" ? "Link copied" : "Copy link"}
           </button>
@@ -979,6 +987,27 @@ export function App() {
             <p className="note">Timing is an estimate: it uses the drive's mean acceleration, not the game's exact two-stage curve.</p>
           </section>
         )}
+
+        <section className="support">
+          <h2>Support</h2>
+          <p className="note first">Free, no ads, no tracking. If it helped you land a catch:</p>
+          <a className="coffee wide" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
+            Buy me a coffee
+          </a>
+          <div className="referral">
+            <span>
+              New to Star Citizen? Enlist with {REFERRAL.name}'s referral code for bonus starting credits.
+            </span>
+            <div className="referral-row">
+              <button className="coords" title="Copy referral code" onClick={() => copy("referral", REFERRAL.id)}>
+                {copied === "referral" ? "copied" : REFERRAL.id}
+              </button>
+              <a href={REFERRAL_URL} target="_blank" rel="noopener noreferrer">
+                Enlist with this code
+              </a>
+            </div>
+          </div>
+        </section>
 
         <footer>
           Positions, radii and drive stats are read from the game's own files (build {universe.build}). Unofficial fan tool, not

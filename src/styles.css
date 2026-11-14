@@ -913,3 +913,54 @@ aside {
     transition-duration: 0.01ms !important;
   }
 }
+
+/* Buy Me a Coffee keeps its own brand yellow, as in SC-ORG-BOT. */
+.coffee {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 11px;
+  border-radius: var(--radius);
+  background: #ffdd00;
+  color: #020617;
+  font-weight: 600;
+  text-decoration: none;
+  white-space: nowrap;
+  transition:
+    filter 0.15s,
+    transform 0.08s;
+}
+.coffee:hover {
+  filter: brightness(1.08);
+}
+.coffee:active {
+  transform: scale(0.97);
+}
+.coffee.wide {
+  width: 100%;
+  padding: 8px 11px;
+}
+.referral {
+  display: grid;
+  gap: 6px;
+  margin-top: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.referral-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.referral-row .coords {
+  color: var(--text);
+  border-color: rgba(var(--accent-rgb), 0.45);
+}
+.referral a {
+  color: var(--accent);
+}
+@media (max-width: 820px) {
+  header .coffee {
+    display: none;
+  }
+}
