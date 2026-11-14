@@ -23,6 +23,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/kinematics.ts` | Quantum travel time estimate. |
 | `src/lib/share.ts` | Plan state to and from the URL hash. |
 | `src/lib/plans.ts` | Saved plans: `localStorage` list, JSON export file, import with validation (`sanitizeState` runs every plan through the link codec, so a file gets the same limits as a link). |
+| `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
 | `src/components/MapView.tsx` | Canvas 2D map with an orthographic camera (pan, zoom, yaw, pitch). |
 | `src/components/LocationPicker.tsx` | Type-to-filter location list. |
@@ -48,6 +49,10 @@ Given only a destination, `plan.ts: bestCatches` grows groups of origins one sna
 ## Law
 
 `armistice` and `monitored` radii per body come from sc-gamedata: armistice from `GreenZone` entities in a station's own container, monitored from `MonitoredZone` objects, whose reach is the entity record's default (50,000 km). `plan.ts: effectiveArrival` pushes the planning radius out to `armistice + standoff`; `Leg.security` reports the nearest armistice gap and who monitors the spot. Planets and moons are excluded: their containers hold surface zones only.
+
+## Layout
+
+Left is what you set, right is what you get. A rail picks one setup panel (Scout, Route, Ship and law, Plans). The result panel keeps the verdict visible and tabs the rest (Spot, Fly in, Verify, Timing), so editing a route never hides the answer. Below 820px it stacks: map, result, setup.
 
 ## Design language
 

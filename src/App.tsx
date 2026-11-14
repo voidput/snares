@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocationPicker } from "./components/LocationPicker";
+import { Crosshair, FolderOpen, Navigation, PanelRightClose, PanelRightOpen, Radar, Route as RouteIcon, ScanSearch, Ship, Timer } from "lucide-react";
 import { MapView, type MapHandle } from "./components/MapView";
+import { TabList, TabPanel, type TabDef } from "./components/Tabs";
 import { SiteFooter } from "./components/SiteFooter";
 import { formatDistance, formatDuration, formatKm, formatPercent } from "./lib/format";
 import { speedAt, timeToReach } from "./lib/kinematics";
@@ -54,6 +56,27 @@ const SPREADS: { label: string; value: SpreadMode }[] = [
   { label: "100 km", value: 100_000 },
 ];
 
+type SetupTab = "scout" | "route" | "ship" | "plans";
+type ResultTab = "details" | "fly" | "verify" | "timing";
+
+/** Left: what you set. */
+const SETUP_TABS: TabDef<SetupTab>[] = [
+  { id: "scout", label: "Scout", icon: Radar },
+  { id: "route", label: "Route", icon: RouteIcon },
+  { id: "ship", label: "Ship", icon: Ship },
+  { id: "plans", label: "Plans", icon: FolderOpen },
+];
+
+/** Right: what you get. */
+const RESULT_TABS: TabDef<ResultTab>[] = [
+  { id: "details", label: "Spot", icon: Crosshair },
+  { id: "fly", label: "Fly in", icon: Navigation },
+  { id: "verify", label: "Verify", icon: ScanSearch },
+  { id: "timing", label: "Timing", icon: Timer },
+];
+
+const RESULTS_OPEN_KEY = "snares.results.open";
+
 /** Imports are read whole into memory, so cap what gets read. */
 const MAX_IMPORT_BYTES = 2_000_000;
 
@@ -94,6 +117,24 @@ export function App() {
   const [planName, setPlanName] = useState("");
   const [planNote, setPlanNote] = useState<string>();
   const importInput = useRef<HTMLInputElement>(null);
+  const [setupTab, setSetupTab] = useState<SetupTab>("route");
+  const [resultTab, setResultTab] = useState<ResultTab>("details");
+  const [resultsOpen, setResultsOpen] = useState(() => {
+    try {
+      return browserStorage()?.getItem(RESULTS_OPEN_KEY) !== "0";
+    } catch {
+      return true;
+    }
+  });
+  const toggleResults = () => {
+    const next = !resultsOpen;
+    setResultsOpen(next);
+    try {
+      browserStorage()?.setItem(RESULTS_OPEN_KEY, next ? "1" : "0");
+    } catch {
+      // A per-viewer convenience: without storage the panel just opens again next visit.
+    }
+  };
   const scanRun = useRef(0);
   const map = useRef<MapHandle>(null);
 
@@ -396,63 +437,20 @@ export function App() {
         </div>
       </header>
 
-      <aside>
-        <section>
-          <h2>Plans</h2>
-          <div className="plan-save">
-            <input
-              type="text"
-              value={planName}
-              maxLength={60}
-              placeholder={defaultPlanName}
-              aria-label="Plan name"
-              onChange={(e) => setPlanName(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") savePlan();
-              }}
-            />
-            <button onClick={savePlan}>Save</button>
-          </div>
-          {plans.length > 0 && (
-            <ul className="plans">
-              {plans.map((plan) => (
-                <li key={plan.id} className={encodeState(plan.state) === encoded ? "on" : undefined}>
-                  <button className="plan-open" onClick={() => openPlan(plan)} title={`Open "${plan.name}"`}>
-                    <span className="plan-name">{plan.name}</span>
-                    <span className="plan-meta">
-                      {plan.state.system} · {plan.state.mode === "dampen" ? "dampen" : "snare"} · {plan.savedAt.slice(0, 10)}
-                    </span>
-                  </button>
-                  <button
-                    className={armed === plan.id ? "ghost plan-delete armed" : "ghost plan-delete"}
-                    onClick={() => deletePlan(plan)}
-                    aria-label={`Delete "${plan.name}"`}
-                  >
-                    {armed === plan.id ? "Sure?" : "×"}
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-          <div className="plan-io">
-            <button className="ghost" onClick={exportAll}>
-              {plans.length > 0 ? "Export all (JSON)" : "Export this plan (JSON)"}
-            </button>
-            <button className="ghost" onClick={() => importInput.current?.click()}>
-              Import
-            </button>
-            <input
-              ref={importInput}
-              type="file"
-              accept="application/json,.json"
-              hidden
-              onChange={(e) => void importFile(e.target.files?.[0])}
-            />
-          </div>
-          <p className="note" role="status">
-            {planNote ?? "Saved plans live in this browser only. Export to back them up or hand them to someone else."}
-          </p>
-        </section>
+      <TabList
+        name="setup"
+        label="Plan setup"
+        orientation="vertical"
+        className="rail"
+        tabs={SETUP_TABS.map((t) => (t.id === "plans" && plans.length > 0 ? { ...t, badge: plans.length } : t))}
+        value={setupTab}
+        onChange={setSetupTab}
+      />
+
+      <aside className="panel setup" aria-label="Plan setup">
+        <TabPanel name="setup" id={setupTab} className="panel-scroll">
+          {setupTab === "scout" && (
+            <>
         <section>
           <h2>Scout {system.name}</h2>
           <button className="catch-go" onClick={runScan} disabled={!!scanned && scanned.done < scanned.total}>
@@ -551,7 +549,10 @@ export function App() {
             </ol>
           )}
         </section>
-
+            </>
+          )}
+          {setupTab === "route" && (
+            <>
         <section>
           <h2>Route</h2>
           <label className="field-label">Targets come from</label>
@@ -728,41 +729,10 @@ export function App() {
                 : `Targets leave from within ${formatDistance(state.spread)} of each origin.`}
           </p>
         </section>
-
-        <section>
-          <h2>Law</h2>
-          <label className="check-row">
-            <input type="checkbox" checked={state.careArmistice} onChange={(e) => update({ careArmistice: e.target.checked })} />
-            <span>
-              Keep clear of armistice zones
-              <small>A target pulled out beside one just flies in and is safe.</small>
-            </span>
-          </label>
-          {state.careArmistice && (
-            <div className="row">
-              <label htmlFor="standoff">Stand-off from the zone</label>
-              <span className="unit-input">
-                <input
-                  id="standoff"
-                  type="number"
-                  min={0}
-                  step={5}
-                  value={Math.round(state.standoff / 1000)}
-                  onChange={(e) => update({ standoff: Math.max(0, Number(e.target.value) || 0) * 1000 })}
-                />
-                km
-              </span>
-            </div>
+            </>
           )}
-          <label className="check-row">
-            <input type="checkbox" checked={state.careComms} onChange={(e) => update({ careComms: e.target.checked })} />
-            <span>
-              Avoid monitored space
-              <small>Comm arrays and stations see crime within {formatDistance(monitorReach)}. The scout marks watched spots down.</small>
-            </span>
-          </label>
-        </section>
-
+          {setupTab === "ship" && (
+            <>
         <section>
           <h2>Your ship</h2>
           <div className="row first">
@@ -852,8 +822,137 @@ export function App() {
             </p>
           )}
         </section>
+        <section>
+          <h2>Law</h2>
+          <label className="check-row">
+            <input type="checkbox" checked={state.careArmistice} onChange={(e) => update({ careArmistice: e.target.checked })} />
+            <span>
+              Keep clear of armistice zones
+              <small>A target pulled out beside one just flies in and is safe.</small>
+            </span>
+          </label>
+          {state.careArmistice && (
+            <div className="row">
+              <label htmlFor="standoff">Stand-off from the zone</label>
+              <span className="unit-input">
+                <input
+                  id="standoff"
+                  type="number"
+                  min={0}
+                  step={5}
+                  value={Math.round(state.standoff / 1000)}
+                  onChange={(e) => update({ standoff: Math.max(0, Number(e.target.value) || 0) * 1000 })}
+                />
+                km
+              </span>
+            </div>
+          )}
+          <label className="check-row">
+            <input type="checkbox" checked={state.careComms} onChange={(e) => update({ careComms: e.target.checked })} />
+            <span>
+              Avoid monitored space
+              <small>Comm arrays and stations see crime within {formatDistance(monitorReach)}. The scout marks watched spots down.</small>
+            </span>
+          </label>
+        </section>
+            </>
+          )}
+          {setupTab === "plans" && (
+            <>
+        <section>
+          <h2>Plans</h2>
+          <div className="plan-save">
+            <input
+              type="text"
+              value={planName}
+              maxLength={60}
+              placeholder={defaultPlanName}
+              aria-label="Plan name"
+              onChange={(e) => setPlanName(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") savePlan();
+              }}
+            />
+            <button onClick={savePlan}>Save</button>
+          </div>
+          {plans.length > 0 && (
+            <ul className="plans">
+              {plans.map((plan) => (
+                <li key={plan.id} className={encodeState(plan.state) === encoded ? "on" : undefined}>
+                  <button className="plan-open" onClick={() => openPlan(plan)} title={`Open "${plan.name}"`}>
+                    <span className="plan-name">{plan.name}</span>
+                    <span className="plan-meta">
+                      {plan.state.system} · {plan.state.mode === "dampen" ? "dampen" : "snare"} · {plan.savedAt.slice(0, 10)}
+                    </span>
+                  </button>
+                  <button
+                    className={armed === plan.id ? "ghost plan-delete armed" : "ghost plan-delete"}
+                    onClick={() => deletePlan(plan)}
+                    aria-label={`Delete "${plan.name}"`}
+                  >
+                    {armed === plan.id ? "Sure?" : "×"}
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
+          <div className="plan-io">
+            <button className="ghost" onClick={exportAll}>
+              {plans.length > 0 ? "Export all (JSON)" : "Export this plan (JSON)"}
+            </button>
+            <button className="ghost" onClick={() => importInput.current?.click()}>
+              Import
+            </button>
+            <input
+              ref={importInput}
+              type="file"
+              accept="application/json,.json"
+              hidden
+              onChange={(e) => void importFile(e.target.files?.[0])}
+            />
+          </div>
+          <p className="note" role="status">
+            {planNote ?? "Saved plans live in this browser only. Export to back them up or hand them to someone else."}
+          </p>
+        </section>
+        <section className="support">
+          <h2>Support</h2>
+          <p className="note first">Free, no ads, no tracking. If it helped you land a catch:</p>
+          <a className="coffee wide" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
+            Buy me a coffee
+          </a>
+          <div className="referral">
+            <span>
+              New to Star Citizen? Enlist with {REFERRAL.name}'s referral code for bonus starting credits.
+            </span>
+            <div className="referral-row">
+              <button className="coords" title="Copy referral code" onClick={() => copy("referral", REFERRAL.id)}>
+                {copied === "referral" ? "copied" : REFERRAL.id}
+              </button>
+              <a href={REFERRAL_URL} target="_blank" rel="noopener noreferrer">
+                Enlist with this code
+              </a>
+            </div>
+          </div>
+        </section>
+            </>
+          )}
+        </TabPanel>
+      </aside>
 
-        <section className={`result status-${status}`}>
+      <aside className={resultsOpen ? "panel results" : "panel results closed"} aria-label="Result">
+        <button
+          className="panel-toggle"
+          onClick={toggleResults}
+          aria-expanded={resultsOpen}
+          aria-label={resultsOpen ? "Hide result panel" : "Show result panel"}
+          title={resultsOpen ? "Hide result panel" : "Show result panel"}
+        >
+          {resultsOpen ? <PanelRightClose size={16} aria-hidden /> : <PanelRightOpen size={16} aria-hidden />}
+        </button>
+        {resultsOpen && (
+          <>
+        <section className={`verdict-head status-${status}`}>
           <h2>Position</h2>
           {legs.length > 1 && (
             <div className="segmented legs">
@@ -895,7 +994,15 @@ export function App() {
                   tighten the departure spread.
                 </p>
               )}
-
+            </>
+          )}
+        </section>
+            {leg && status !== "none" && (
+              <>
+                <TabList name="result" label="Result" className="result-tabs" tabs={RESULT_TABS} value={resultTab} onChange={setResultTab} />
+                <TabPanel name="result" id={resultTab} className="panel-scroll">
+                  {resultTab === "details" && (
+                    <section>
               <dl className="facts">
                 <dt>From {leg.dest.name}</dt>
                 <dd>{formatDistance(leg.distance)}</dd>
@@ -1013,11 +1120,10 @@ export function App() {
                 <button onClick={() => map.current?.fitSystem()}>System</button>
                 <button onClick={() => map.current?.topDown()}>Top-down</button>
               </div>
-            </>
-          )}
-        </section>
-
-        {leg && status !== "none" && (
+                    </section>
+                  )}
+                  {resultTab === "fly" && (
+                    <>
           <section>
             <h2>Getting there</h2>
             <p className="note">Quantum toward a marker and cut the drive early. Pick where you start, or see the closest lines from anywhere.</p>
@@ -1079,9 +1185,10 @@ export function App() {
               <DriveSelect id="mydrive" universe={universe} value={state.myDrive} onChange={(id) => update({ myDrive: id })} />
             </div>
           </section>
-        )}
-
-        {leg && status !== "none" && (
+                    </>
+                  )}
+                  {resultTab === "verify" && (
+                    <>
           <section>
             <h2>Check your position</h2>
             <p className="note">
@@ -1123,9 +1230,10 @@ export function App() {
               </div>
             )}
           </section>
-        )}
-
-        {leg && status !== "none" && (
+                    </>
+                  )}
+                  {resultTab === "timing" && (
+                    <>
           <section>
             <h2>Target timing</h2>
             <div className="row">
@@ -1162,29 +1270,13 @@ export function App() {
             )}
             <p className="note">Timing is an estimate: it uses the drive's mean acceleration, not the game's exact two-stage curve.</p>
           </section>
+                    </>
+                  )}
+                </TabPanel>
+              </>
+            )}
+          </>
         )}
-
-        <section className="support">
-          <h2>Support</h2>
-          <p className="note first">Free, no ads, no tracking. If it helped you land a catch:</p>
-          <a className="coffee wide" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
-            Buy me a coffee
-          </a>
-          <div className="referral">
-            <span>
-              New to Star Citizen? Enlist with {REFERRAL.name}'s referral code for bonus starting credits.
-            </span>
-            <div className="referral-row">
-              <button className="coords" title="Copy referral code" onClick={() => copy("referral", REFERRAL.id)}>
-                {copied === "referral" ? "copied" : REFERRAL.id}
-              </button>
-              <a href={REFERRAL_URL} target="_blank" rel="noopener noreferrer">
-                Enlist with this code
-              </a>
-            </div>
-          </div>
-        </section>
-
       </aside>
 
       <main>

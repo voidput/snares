@@ -6,6 +6,14 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Two-panel workspace
+
+Type: Changed. Effort: L2.
+
+- One long sidebar split in two ([architecture](architecture.md)): left rail + tabbed setup panel (Scout, Route, Ship and law, Plans), right result panel with the verdict pinned over Spot, Fly in, Verify and Timing tabs. Map between.
+- Result panel collapses; the choice is remembered in the browser. Phone: map, result, then setup tabs as a strip.
+- `src/components/Tabs.tsx`: keyboard-navigable tab strip. Rail item look follows SC-ORG-BOT's sidebar nav item; icons from `lucide-react`.
+
 ## 2026-11-14 — Saved plans, JSON import/export, reset all
 
 Type: Added. Effort: L2.
