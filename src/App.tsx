@@ -267,7 +267,23 @@ export function App() {
         if (best) {
           // The spot sits a few hundred km from its destination at most, far
           // inside any monitored zone's reach, so the destination stands for it.
-          const watched = monitoredAt(targets[next].pos, bodies).length > 0;
+          // A jammer's dead zone is tens of km across, so there the planned spot itself decides.
+          const dest = targets[next];
+          const spot = dest.jammer
+            ? solvePlan({
+                bodies,
+                originIds: best.originIds,
+                destIds: [dest.id],
+                spread: state.spread,
+                drift: state.drift,
+                radius: state.radius,
+                placement: state.placement,
+                mode: state.mode,
+                dampenRange: state.dampen,
+                standoff,
+              })[0]?.snare
+            : undefined;
+          const watched = monitoredAt(spot ?? dest.pos, bodies).length > 0;
           // Watched space is a worse place to work, when that matters to you.
           const penalty = state.careComms && watched ? WATCHED_PENALTY : 1;
           found.push({ destId: targets[next].id, best, value: best.score * weightOf(targets[next], weights) * penalty, watched });
@@ -824,7 +840,10 @@ export function App() {
             <input type="checkbox" checked={state.careComms} onChange={(e) => update({ careComms: e.target.checked })} />
             <span>
               Avoid monitored space
-              <small>Comm arrays and stations see crime within {formatDistance(monitorReach)}. The scout marks watched spots down.</small>
+              <small>
+                Comm arrays and stations see crime within {formatDistance(monitorReach)}, except inside a jammer's dead zone (Grim HEX).
+                The scout marks watched spots down.
+              </small>
             </span>
           </label>
         </section>
@@ -982,12 +1001,23 @@ export function App() {
                       </p>
                     ))}
                   {state.careComms &&
-                    (leg.security.monitoredBy.length > 0 ? (
+                    (leg.security.jammedBy.length > 0 ? (
+                      <p className="law-line good">
+                        <b>Dark</b>
+                        Inside {leg.security.jammedBy[0].name}'s jammer dead zone ({formatDistance(leg.security.jammedBy[0].jammer ?? 0)}).
+                        Comm arrays do not see crime here.
+                      </p>
+                    ) : leg.security.monitoredBy.length > 0 ? (
                       <p className="law-line warnish">
                         <b>Watched</b>
                         Inside the monitored zone of {leg.security.monitoredBy.slice(0, 3).map((b) => b.name).join(", ")}
                         {leg.security.monitoredBy.length > 3 ? ` and ${leg.security.monitoredBy.length - 3} more` : ""}. Crime here is
                         reported unless the comm array is down.
+                        {leg.dest.jammer
+                          ? ` ${leg.dest.name} jams monitoring within ${formatDistance(leg.dest.jammer)}; this spot is ${formatDistance(
+                              Math.max(0, distance(leg.snare, leg.dest.pos) - leg.dest.jammer),
+                            )} outside that.`
+                          : ""}
                       </p>
                     ) : (
                       <p className="law-line good">

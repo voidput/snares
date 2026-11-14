@@ -35,6 +35,11 @@ export interface Body {
   armistice?: number;
   /** Radius inside which crime is seen and reported, metres (comm array, station). */
   monitored?: number;
+  /**
+   * Radius of a monitor zone jammer here, metres: a dead zone where crime goes unseen
+   * whatever comm array or station covers the space around it (Grim HEX).
+   */
+  jammer?: number;
   /** Number of services the place offers (refuel, shops, ...), if any. */
   services?: number;
   /** Has a refinery: miners arrive here loaded. */

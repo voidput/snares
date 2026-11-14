@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useImperativeHandle, useRef, useState, type Ref } from "react";
 
 import { formatDistance } from "../lib/format";
+import { mapRank, pickNearest } from "../lib/pick";
 import { arrivalOf, type Approach, type Leg } from "../lib/plan";
 import type { Body, BodyKind } from "../lib/types";
 import { add, scale, sub, type Vec3 } from "../lib/vec";
@@ -51,7 +52,6 @@ const COLORS: Record<BodyKind, string> = {
   asteroid: "#77828f",
   other: "#77828f",
 };
-const LABEL_PRIORITY: BodyKind[] = ["star", "planet", "city", "jump", "lagrange", "station", "moon", "asteroid", "surface", "other"];
 const ROUTE = "#3cc8ff";
 const SNARE = "#ffb547";
 const DAMPEN = "#c48cff";
@@ -131,6 +131,31 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, s
       const r = Math.hypot(d[0], d[1]);
       if (r * c.ppm < 12 || r * c.ppm > 40 * Math.max(w, h)) continue;
       ring(about, r, body.kind === "planet" ? "rgba(127,180,255,0.16)" : "rgba(169,182,204,0.12)");
+    }
+
+    // Jammer dead zones: a dashed green ring where monitoring is cancelled.
+    if (s.showMonitored) {
+      for (const body of s.bodies) {
+        if (!body.jammer || body.on) continue;
+        const r = body.jammer * c.ppm;
+        if (r < 6 || r > 30000) continue;
+        const [x, y] = project(body.pos);
+        if (x + r < 0 || y + r < 0 || x - r > w || y - r > h) continue;
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(61,220,151,0.06)";
+        ctx.fill();
+        ctx.setLineDash([6, 5]);
+        ctx.strokeStyle = "rgba(61,220,151,0.7)";
+        ctx.lineWidth = 1;
+        ctx.stroke();
+        ctx.setLineDash([]);
+        if (r > 60) {
+          ctx.font = "600 10px Inter, system-ui, sans-serif";
+          ctx.fillStyle = "rgba(61,220,151,0.9)";
+          ctx.fillText("COMM DEAD ZONE", x - 46, y - r + 14);
+        }
+      }
     }
 
     // The law: monitored zones as a faint wash, armistice zones as a hard ring.
@@ -284,7 +309,7 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, s
         y: p[1],
         text: body.name,
         color: isPicked || body === hover.current ? "#fff" : color,
-        rank: isPicked || body === hover.current ? -1 : LABEL_PRIORITY.indexOf(body.kind),
+        rank: isPicked || body === hover.current ? -1 : mapRank(body.kind, body.weight),
         bold: isPicked,
       });
     }
@@ -519,18 +544,21 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, showArmistice, s
   }, [invalidate, unprojectDelta]);
 
   const nearest = (x: number, y: number): Body | undefined => {
-    let best: Body | undefined;
-    let bestD = 14;
-    for (const body of scene.current.bodies) {
-      if (body.on) continue;
-      const [px, py] = project(body.pos);
-      const d = Math.hypot(px - x, py - y);
-      if (d < bestD) {
-        bestD = d;
-        best = body;
-      }
+    const picked = new Set<string>();
+    for (const leg of scene.current.legs) {
+      picked.add(leg.dest.id);
+      for (const r of leg.routes) picked.add(r.id);
     }
-    return best;
+    return pickNearest(
+      scene.current.bodies
+        .filter((body) => !body.on)
+        .map((body) => {
+          const [px, py] = project(body.pos);
+          // Same order the labels are placed in, so the pick is the name already on screen.
+          return { item: body, distance: Math.hypot(px - x, py - y), rank: picked.has(body.id) ? -1 : mapRank(body.kind, body.weight) };
+        }),
+      hover.current,
+    );
   };
 
   const drag = useRef<{ x: number; y: number; rotate: boolean; moved: boolean } | undefined>(undefined);

@@ -23,6 +23,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/kinematics.ts` | Quantum travel time estimate. |
 | `src/lib/share.ts` | Plan state to and from the URL hash. |
 | `src/lib/plans.ts` | Saved plans: `localStorage` list, JSON export file, import with validation (`sanitizeState` runs every plan through the link codec, so a file gets the same limits as a link). |
+| `src/lib/pick.ts` | What the pointer is on (`pickNearest`) and the order labels and picks follow (`mapRank`). |
 | `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
 | `src/components/MapView.tsx` | Canvas 2D map with an orthographic camera (pan, zoom, yaw, pitch). |
@@ -49,6 +50,8 @@ Given only a destination, `plan.ts: bestCatches` grows groups of origins one sna
 ## Law
 
 `armistice` and `monitored` radii per body come from sc-gamedata: armistice from `GreenZone` entities in a station's own container, monitored from `MonitoredZone` objects, whose reach is the entity record's default (50,000 km). `plan.ts: effectiveArrival` pushes the planning radius out to `armistice + standoff`; `Leg.security` reports the nearest armistice gap and who monitors the spot. Planets and moons are excluded: their containers hold surface zones only.
+
+A jammer (`jammer` on a body, metres) is a dead zone: `monitoredAt` returns nothing inside one, and `jammedAt` names it. The data comes from `MonitorZoneJammer` entities in a station's container, a monitored zone of negative strength.
 
 ## Layout
 

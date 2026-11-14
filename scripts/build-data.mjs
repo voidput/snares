@@ -69,6 +69,7 @@ for (const location of positioned) {
       undefined,
     armistice: location.armisticeRadius,
     monitored: location.monitoredRadius,
+    jammer: location.jammerRadius,
   });
 }
 

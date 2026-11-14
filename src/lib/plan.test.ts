@@ -8,6 +8,7 @@ import {
   approaches,
   bestCatches,
   effectiveArrival,
+  jammedAt,
   monitoredAt,
   nearestArmistice,
   obstructions,
@@ -459,5 +460,19 @@ describe("share links", () => {
   it("survives garbage", () => {
     expect(decodeState("#p=abc&r=-4&sp=wat&l=x")).toEqual(DEFAULT_STATE);
     expect(decodeState("")).toEqual(DEFAULT_STATE);
+  });
+});
+
+describe("jammer dead zones", () => {
+  const base = { kind: "station" as const, parent: "star", arrival: 1000 };
+  const array = { ...base, id: "array", name: "Comm Array", pos: [0, 0, 0] as [number, number, number], monitored: 50_000_000 };
+  const outlaw = { ...base, id: "outlaw", name: "Outlaw Station", pos: [1_000_000, 0, 0] as [number, number, number], jammer: 35_000 };
+  const bodies = [array, outlaw] as unknown as Body[];
+
+  it("cancels monitoring inside the jammer and nowhere else", () => {
+    expect(monitoredAt([1_020_000, 0, 0], bodies)).toEqual([]);
+    expect(jammedAt([1_020_000, 0, 0], bodies).map((b) => b.id)).toEqual(["outlaw"]);
+    expect(monitoredAt([1_040_000, 0, 0], bodies).map((b) => b.id)).toEqual(["array"]);
+    expect(jammedAt([1_040_000, 0, 0], bodies)).toEqual([]);
   });
 });

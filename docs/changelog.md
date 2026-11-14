@@ -6,6 +6,15 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Comm dead zones, steadier map picking, priority by traffic
+
+Type: Added, Fixed. Effort: L2.
+
+- Jammer dead zones ([architecture](architecture.md)): Grim HEX carries a `MonitorZoneJammer` in the game files (35 km) that cancels monitoring around it. A spot inside reads Dark; the map draws the zone; a watched spot heading for a jammed station says how far outside it sits. The scout judges such destinations by the planned spot, not the station.
+- Whole archive searched: five jammers exist, and only Grim HEX's is in open space (three are prison caves, one a mission instance).
+- Fixed: hovering a spot where several places stack (a planet, its moons and stations when zoomed out) picked the nearest dot, so the label changed name as the pointer moved. A stack now gives up its most important member, and equals keep the one already held (`src/lib/pick.ts`).
+- Labels and picks rank by traffic weight after stars and planets: cities and core stations come before comm arrays and mining bases.
+
 ## 2026-11-14 — Privacy policy and terms
 
 Type: Added. Effort: L1.

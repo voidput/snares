@@ -62,12 +62,25 @@ export interface ArmisticeGap {
 export interface Security {
   /** Places whose monitored zone covers the position: crime here is seen. */
   monitoredBy: Body[];
+  /** Places whose jammer covers the position: a dead zone, nothing here is seen. */
+  jammedBy: Body[];
   /** Nearest armistice zone, if the system has any. */
   armistice?: ArmisticeGap;
 }
 
-/** Places whose monitored zone contains `point`, nearest first. */
+/** Places whose monitor zone jammer covers `point`: a comm dead zone. Nearest first. */
+export function jammedAt(point: Vec3, bodies: Body[]): Body[] {
+  return bodies
+    .filter((b) => b.jammer && !b.on && distance(b.pos, point) <= b.jammer)
+    .sort((a, b) => distance(a.pos, point) - distance(b.pos, point));
+}
+
+/**
+ * Places whose monitored zone contains `point`, nearest first. None inside a jammer's
+ * dead zone: a jammer cancels every monitored zone that reaches into it.
+ */
 export function monitoredAt(point: Vec3, bodies: Body[]): Body[] {
+  if (jammedAt(point, bodies).length > 0) return [];
   return bodies
     .filter((b) => b.monitored && !b.on && distance(b.pos, point) <= b.monitored)
     .sort((a, b) => distance(a.pos, point) - distance(b.pos, point));
@@ -226,7 +239,7 @@ export function solveLeg(
       snare: position,
       evaluation,
       blocked,
-      security: { monitoredBy: monitoredAt(position, bodies), armistice: nearestArmistice(position, 0, bodies) },
+      security: { monitoredBy: monitoredAt(position, bodies), jammedBy: jammedAt(position, bodies), armistice: nearestArmistice(position, 0, bodies) },
     };
   }
 
@@ -256,7 +269,7 @@ export function solveLeg(
     snare,
     evaluation: evaluate(dest.pos, routes, snare, radius),
     blocked,
-    security: { monitoredBy: monitoredAt(snare, bodies), armistice: nearestArmistice(snare, radius, bodies) },
+    security: { monitoredBy: monitoredAt(snare, bodies), jammedBy: jammedAt(snare, bodies), armistice: nearestArmistice(snare, radius, bodies) },
   };
 }
 
