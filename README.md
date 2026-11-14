@@ -93,4 +93,11 @@ near limit is the destination's arrival radius plus the snare radius. See
 - The `/showlocation` format is parsed leniently (labelled x/y/z, or any three
   numbers); it assumes metres in the system frame.
 
-Unofficial fan tool, not affiliated with Cloud Imperium Games.
+## Legal
+
+Unofficial, non-commercial fan site, not affiliated with the Cloud Imperium group
+of companies. It carries the Star Citizen Fankit's Made By The Community mark and
+CIG's disclaimer in a persistent footer; those are a condition of the Fankit
+Agreement, guarded by `src/brand/fankit.test.ts`. See [NOTICE.md](NOTICE.md) and
+[the decision note](docs/decisions/star-citizen-fankit-compliance.md) before
+touching the footer.

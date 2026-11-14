@@ -136,7 +136,7 @@ code {
 .app {
   height: 100%;
   display: grid;
-  grid-template: "header header" auto "aside main" minmax(0, 1fr) / 380px minmax(0, 1fr);
+  grid-template: "header header" auto "aside main" minmax(0, 1fr) "footer footer" auto / 380px minmax(0, 1fr);
 }
 
 header {
@@ -641,11 +641,6 @@ table.routes {
   color: var(--muted);
 }
 
-footer {
-  padding: 14px;
-  color: var(--dim);
-  font-size: 12px;
-}
 
 main {
   grid-area: main;
@@ -714,7 +709,7 @@ main {
   .app {
     height: auto;
     min-height: 100%;
-    grid-template: "header" auto "main" 56vh "aside" auto / minmax(0, 1fr);
+    grid-template: "header" auto "main" 56vh "aside" auto "footer" auto / minmax(0, 1fr);
   }
   aside {
     border-right: 0;
@@ -962,5 +957,59 @@ aside {
 @media (max-width: 820px) {
   header .coffee {
     display: none;
+  }
+}
+
+/*
+ * Site footer. Load-bearing for the Star Citizen Fankit Agreement: see
+ * src/brand/fankit.ts before changing anything here.
+ */
+.site-footer {
+  grid-area: footer;
+  position: relative;
+  border-top: 1px solid var(--line);
+  background: rgb(2 6 23 / 0.92);
+}
+.footer-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 6px 14px;
+}
+/* The mark is shown as supplied: size only, nothing else. */
+.fankit-mark {
+  flex: none;
+  display: block;
+  width: 40px;
+  height: 40px;
+}
+.footer-notice {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+  line-height: 1.4;
+  color: var(--muted);
+}
+.legal-panel {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 100%;
+  z-index: 30;
+  display: grid;
+  gap: 8px;
+  padding: 14px;
+  border-top: 1px solid var(--line-2);
+  background: rgb(15 23 42 / 0.98);
+  line-height: 1.5;
+  color: var(--muted);
+}
+.legal-panel p {
+  margin: 0;
+  max-width: 110ch;
+}
+@media (max-width: 820px) {
+  .legal-panel {
+    position: static;
   }
 }

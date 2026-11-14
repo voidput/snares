@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocationPicker } from "./components/LocationPicker";
 import { MapView, type MapHandle } from "./components/MapView";
+import { SiteFooter } from "./components/SiteFooter";
 import { formatDistance, formatDuration, formatKm, formatPercent } from "./lib/format";
 import { speedAt, timeToReach } from "./lib/kinematics";
 import {
@@ -1009,10 +1010,6 @@ export function App() {
           </div>
         </section>
 
-        <footer>
-          Positions, radii and drive stats are read from the game's own files (build {universe.build}). Unofficial fan tool, not
-          affiliated with Cloud Imperium Games. Star Citizen® is a trademark of Cloud Imperium Rights LLC.
-        </footer>
       </aside>
 
       <main>
@@ -1061,6 +1058,8 @@ export function App() {
           </div>
         )}
       </main>
+
+      <SiteFooter build={universe.build} />
     </div>
   );
 }

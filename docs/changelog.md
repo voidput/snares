@@ -6,6 +6,13 @@ updated: 2026-11-13
 
 # Changelog
 
+## 2026-11-13 — Fankit mark and disclaimer
+
+Type: Added. Effort: L1.
+
+- Made By The Community mark and CIG's disclaimer in a persistent footer, with guard tests ([decision](decisions/star-citizen-fankit-compliance.md)).
+- `NOTICE.md`.
+
 ## 2026-11-13 — First version of the snare planner
 
 Type: Added. Effort: L3.
