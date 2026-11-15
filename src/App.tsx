@@ -1434,6 +1434,9 @@ export function App() {
                 <button onClick={() => map.current?.fitPlan()}>Show routes</button>
                 <button onClick={() => map.current?.fitSystem()}>System</button>
                 <button onClick={() => map.current?.topDown()}>Top-down</button>
+                <button title="Lean the view over: what sits above and below a planet comes apart from it" onClick={() => map.current?.tilt()}>
+                  Tilt
+                </button>
               </div>
                     </section>
                   )}

@@ -5,12 +5,15 @@ import { mapRank, pickNearest } from "../lib/pick";
 import { arrivalOf, type Approach, type Leg } from "../lib/plan";
 import type { Body, BodyKind } from "../lib/types";
 import { add, distance, scale, sub, type Vec3 } from "../lib/vec";
+import { behind, frontSpan } from "../lib/view";
 
 export interface MapHandle {
   fitPlan(): void;
   fitSystem(): void;
   focusSnare(): void;
   topDown(): void;
+  /** Lean the view over, so what sits above and below a body comes apart from it. */
+  tilt(): void;
 }
 
 interface Props {
@@ -59,6 +62,11 @@ const COLORS: Record<BodyKind, string> = {
 };
 /** Orbital markers appear once they sit this many pixels from their body. */
 const MARKER_ZOOM_PX = 60;
+/** The leaned-over view: far enough to part the pole markers from the body, not so far the plane closes up. */
+const TILT_PITCH = 1.0;
+const TILT_YAW = 0.5;
+/** A body is drawn as a lit sphere, and hides what is behind it, once its disc is this wide. */
+const SPHERE_MIN_PX = 8;
 /** A turning place's path is drawn once its circle is this wide, and with this many segments. */
 const TURN_PATH_MIN_PX = 14;
 const TURN_PATH_STEPS = 96;
@@ -116,6 +124,20 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
     const c = camera.current;
     const byId = new Map(s.bodies.map((b) => [b.id, b]));
     const onScreen = ([x, y]: [number, number], pad = 40) => x > -pad && y > -pad && x < w + pad && y < h + pad;
+
+    // Depth toward the viewer, metres: the view is flat, so this is all the third dimension there is.
+    const depthOf = (p: Vec3) => {
+      const [x, y, z] = sub(p, c.center);
+      return z * Math.cos(c.pitch) - (x * Math.sin(c.yaw) + y * Math.cos(c.yaw)) * Math.sin(c.pitch);
+    };
+    const tilted = c.pitch > 0.05;
+    // Bodies big enough on screen to be spheres: they hide what is behind them.
+    const discs = s.bodies
+      .filter((b) => (b.kind === "star" || b.kind === "planet" || b.kind === "moon") && (b.obstruction ?? 0) * c.ppm >= SPHERE_MIN_PX)
+      .map((b) => ({ id: b.id, at: project(b.pos), r: Math.min((b.obstruction ?? 0) * c.ppm, 20000), depth: depthOf(b.pos) }))
+      .filter((d) => onScreen(d.at, d.r + 40));
+    // Lines drawn under the bodies; the parts that pass in front of one are drawn again over it.
+    const strokes: { points: Vec3[]; color: string; width: number; alpha: number; dash: number[] }[] = [];
 
     const ring = (center: Vec3, r: number, style: string, dash: number[] = []) => {
       ctx.beginPath();
@@ -253,7 +275,9 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
           ctx.stroke();
           ctx.setLineDash([]);
           ctx.globalAlpha = 1;
+          if (active) strokes.push({ points: [route.from, ...route.via.map((v) => v.pos)], color: ROUTE, width: 1, alpha: 0.5, dash: [6, 5] });
         }
+        if (active) strokes.push({ points: [route.origin, leg.dest.pos], color: bad ? "#ff5d5d" : ROUTE, width: 1.4, alpha: 0.9, dash: [] });
 
         ctx.beginPath();
         ctx.moveTo(ox, oy);
@@ -307,12 +331,16 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       const centre: Vec3 = [carrier.pos[0], carrier.pos[1], carrier.pos[2] + place.local[2]];
       if (!onScreen(project(centre), px + 50)) continue;
       ctx.beginPath();
+      const circle: Vec3[] = [];
       for (let i = 0; i <= TURN_PATH_STEPS; i++) {
         const a = (i / TURN_PATH_STEPS) * Math.PI * 2;
-        const [x, y] = project([centre[0] + Math.cos(a) * around, centre[1] + Math.sin(a) * around, centre[2]]);
+        const at: Vec3 = [centre[0] + Math.cos(a) * around, centre[1] + Math.sin(a) * around, centre[2]];
+        circle.push(at);
+        const [x, y] = project(at);
         if (i === 0) ctx.moveTo(x, y);
         else ctx.lineTo(x, y);
       }
+      strokes.push({ points: circle, color: COLORS[place.kind], width: isPicked ? 1.2 : 1, alpha: isPicked ? 0.7 : 0.28, dash: [] });
       ctx.setLineDash(place.on ? [2, 6] : [5, 5]);
       ctx.strokeStyle = COLORS[place.kind];
       ctx.globalAlpha = isPicked ? 0.7 : 0.28;
@@ -337,19 +365,67 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       const isPicked = picked.has(body.id);
       const dot = body.kind === "star" ? 5 : body.kind === "planet" ? 4 : isPicked ? 3.5 : body.kind === "asteroid" ? 1.5 : 2.5;
 
+      // Something on the far side of the body it belongs to shows through it, faintly.
+      const depth = depthOf(body.pos);
+      const hidden = discs.some((d) => d.id !== body.id && d.id !== body.on && behind(p, depth, d.at, d.r, d.depth));
+      if (hidden) ctx.globalAlpha = 0.3;
+
       if (trueR > dot && (body.kind === "star" || body.kind === "planet" || body.kind === "moon")) {
+        const r = Math.min(trueR, 20000);
         ctx.beginPath();
-        ctx.arc(p[0], p[1], Math.min(trueR, 20000), 0, Math.PI * 2);
+        ctx.arc(p[0], p[1], r, 0, Math.PI * 2);
         ctx.fillStyle = color;
-        ctx.globalAlpha = 0.35;
-        ctx.fill();
+        if (trueR >= SPHERE_MIN_PX && body.kind !== "star") {
+          // A lit sphere: solid enough to hide what is behind it.
+          ctx.globalAlpha = 0.5;
+          ctx.fill();
+          const shade = ctx.createRadialGradient(p[0] - r * 0.4, p[1] - r * 0.4, r * 0.05, p[0], p[1], r);
+          shade.addColorStop(0, "rgba(255,255,255,0.10)");
+          shade.addColorStop(0.55, "rgba(8,12,24,0.35)");
+          shade.addColorStop(1, "rgba(8,12,24,0.78)");
+          ctx.globalAlpha = 1;
+          ctx.fillStyle = shade;
+          ctx.fill();
+          ctx.strokeStyle = color;
+          ctx.globalAlpha = 0.45;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          if (tilted && trueR < 20000) {
+            // Its equator, so the lean of the view and the body's axis can be read.
+            const equator: Vec3[] = [];
+            for (let i = 0; i <= 64; i++) {
+              const a = (i / 64) * Math.PI * 2;
+              equator.push([body.pos[0] + Math.cos(a) * (body.obstruction ?? 0), body.pos[1] + Math.sin(a) * (body.obstruction ?? 0), body.pos[2]]);
+            }
+            strokes.push({ points: equator, color, width: 1, alpha: 0.5, dash: [] });
+          }
+        } else {
+          ctx.globalAlpha = 0.35;
+          ctx.fill();
+        }
         ctx.globalAlpha = 1;
       } else {
+        // In a leaned view, a line down to the body's equator plane says how far above or below it sits.
+        const anchor = body.kind === "marker" || (body.rides && !body.on) ? parents.get(body.parent ?? body.rides ?? "") : undefined;
+        if (tilted && anchor && discs.some((d) => d.id === anchor.id)) {
+          const foot = project([body.pos[0], body.pos[1], anchor.pos[2]]);
+          if (Math.hypot(foot[0] - p[0], foot[1] - p[1]) > 6) {
+            ctx.beginPath();
+            ctx.moveTo(p[0], p[1]);
+            ctx.lineTo(foot[0], foot[1]);
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 1;
+            ctx.globalAlpha = hidden ? 0.12 : 0.3;
+            ctx.stroke();
+            ctx.globalAlpha = hidden ? 0.3 : 1;
+          }
+        }
         ctx.beginPath();
         ctx.arc(p[0], p[1], dot, 0, Math.PI * 2);
         ctx.fillStyle = color;
         ctx.fill();
       }
+      ctx.globalAlpha = 1;
       const arrivalPx = arrivalOf(body) * c.ppm;
       if (arrivalPx > 8 && arrivalPx < 20000) {
         ctx.beginPath();
@@ -376,6 +452,34 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
         rank: isPicked || body === hover.current ? -1 : mapRank(body.kind, body.weight),
         bold: isPicked,
       });
+    }
+
+    // What passes in front of a body, drawn again over it.
+    if (discs.length > 0) {
+      for (const stroke of strokes) {
+        let from = project(stroke.points[0]);
+        let fromDepth = depthOf(stroke.points[0]);
+        for (let i = 1; i < stroke.points.length; i++) {
+          const to = project(stroke.points[i]);
+          const toDepth = depthOf(stroke.points[i]);
+          for (const d of discs) {
+            const span = frontSpan(from, to, fromDepth, toDepth, d.at, d.r, d.depth);
+            if (!span) continue;
+            ctx.beginPath();
+            ctx.moveTo(from[0] + (to[0] - from[0]) * span[0], from[1] + (to[1] - from[1]) * span[0]);
+            ctx.lineTo(from[0] + (to[0] - from[0]) * span[1], from[1] + (to[1] - from[1]) * span[1]);
+            ctx.setLineDash(stroke.dash);
+            ctx.strokeStyle = stroke.color;
+            ctx.lineWidth = stroke.width;
+            ctx.globalAlpha = Math.min(1, stroke.alpha + 0.25);
+            ctx.stroke();
+          }
+          from = to;
+          fromDepth = toDepth;
+        }
+      }
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
     }
 
     const leg = s.legs[s.activeLeg];
@@ -428,6 +532,25 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       ctx.arc(sx, sy, Math.max(r, 2), 0, Math.PI * 2);
       ctx.fillStyle = leg.mode === "dampen" ? "rgba(196,140,255,0.16)" : "rgba(255,181,71,0.18)";
       ctx.fill();
+      if (r >= 24) {
+        // A sphere, not a disc: lit from one side, with its equator when the view leans.
+        const glow = ctx.createRadialGradient(sx - r * 0.4, sy - r * 0.4, r * 0.05, sx, sy, r);
+        glow.addColorStop(0, "rgba(255,255,255,0.10)");
+        glow.addColorStop(1, "rgba(8,12,24,0.22)");
+        ctx.fillStyle = glow;
+        ctx.fill();
+        if (tilted) {
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, r, r * Math.cos(c.pitch), 0, 0, Math.PI * 2);
+          ctx.strokeStyle = tone;
+          ctx.globalAlpha = 0.35;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.globalAlpha = 1;
+          ctx.beginPath();
+          ctx.arc(sx, sy, r, 0, Math.PI * 2);
+        }
+      }
       ctx.strokeStyle = tone;
       ctx.lineWidth = 1.5;
       ctx.stroke();
@@ -582,6 +705,11 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       topDown() {
         camera.current.yaw = 0;
         camera.current.pitch = 0;
+        invalidate();
+      },
+      tilt() {
+        camera.current.pitch = TILT_PITCH;
+        if (camera.current.yaw === 0) camera.current.yaw = TILT_YAW;
         invalidate();
       },
     }),

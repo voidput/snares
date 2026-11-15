@@ -27,6 +27,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/markers.ts` | Orbital markers (OM-1..6): `markersOf` a body, `withMarkers` for a system. Derived at load, not baked. |
 | `src/lib/routing.ts` | `obstructions` on a straight line, and `findPath`: the markers a blocked jump stops at. |
 | `src/lib/spin.ts` | Places that turn with a body: `turned` positions for a set of turns, `lastStops` by latitude, `holdWindow`, `turnFrom` a position read in game. |
+| `src/lib/view.ts` | Depth for the flat map: `frontSpan`, the part of a line passing in front of a sphere, and `behind` for a point. |
 | `src/lib/fleet.ts` | Several ships on one leg: `planFleet` gives each a role and a `Leg`; `entryPoints` and `ownHold` say where a snare leaves its catch and whether a dampener reaches it. |
 | `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
@@ -102,6 +103,8 @@ Tokens and conventions follow SC-ORG-BOT (Deep Space surfaces, Orbitron labels, 
 ## Map
 
 Canvas 2D rather than WebGL: the scene spans 20 km to 60 Gm, which doubles handle and 32-bit GPU floats do not. The camera is orthographic with yaw and pitch, so top-down is the 2D view and rotating gives 3D.
+
+Depth without a 3D renderer: the view is orthographic, so a body is a disc and a line stays straight. Lines that matter (the active routes, marker hops, turn paths, equators) are drawn under the bodies and collected as strokes; after the bodies, `frontSpan` gives the part of each stroke that lies over a disc and nearer the viewer than its centre, and that part is drawn again on top. `Tilt` sets a fixed lean; cues that only make sense leaned (equators, drop lines to the equator plane) are off in the top-down view.
 
 ## Decisions
 

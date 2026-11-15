@@ -6,6 +6,16 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — A map with depth
+
+Type: Added. Effort: L2.
+
+- **Tilt** beside Top-down: leans the view over, so what sits above and below a body (the pole markers, a station's latitude, a turn path) comes apart from it ([architecture](architecture.md)).
+- Planets and moons are lit spheres once big enough on screen, with their equator when the view leans. The snare sphere is shaded the same way.
+- Depth is honoured: a route, a marker hop or a turn path passing behind a body is hidden by it and drawn over it where it passes in front; a place on the far side shows through faintly.
+- In a leaned view, orbital markers and low stations drop a line to their body's equator plane.
+- Still Canvas 2D, orthographic. No new dependency (`src/lib/view.ts` holds the geometry).
+
 ## 2026-11-14 — Places that turn with their planet
 
 Type: Added. Effort: L3.
