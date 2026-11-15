@@ -1,4 +1,5 @@
 import type { Mode, SpreadMode, Weights } from "./plan";
+import type { Turns } from "./spin";
 
 /** Everything that defines a plan, and so everything a shared link carries. */
 export interface PlanState {
@@ -29,6 +30,8 @@ export interface PlanState {
   careComms: boolean;
   /** Ships beyond the lead: what each does, and which interdictor it is (the lead's when unset). */
   fleet: FleetEntry[];
+  /** How far each turning planet or moon has turned, degrees, by body id. */
+  turns: Turns;
 }
 
 export type FleetRole = "split" | "hold" | "backstop";
@@ -57,6 +60,7 @@ export const DEFAULT_STATE: PlanState = {
   careArmistice: true,
   careComms: true,
   fleet: [],
+  turns: {},
 };
 
 export function encodeState(state: PlanState): string {
@@ -80,6 +84,11 @@ export function encodeState(state: PlanState): string {
   if (state.fleet.length) p.set("f", state.fleet.map((m) => `${ROLE_CODE[m.role]}.${m.ship ?? ""}`).join(","));
   const weights = Object.entries(state.weights);
   if (weights.length) p.set("w", weights.map(([id, weight]) => `${id}:${weight}`).join(","));
+  // Whole turns say nothing; a tenth of a degree is under a kilometre for any place that turns.
+  const turns = Object.entries(state.turns)
+    .map(([id, degrees]) => [id, Math.round((((degrees % 360) + 360) % 360) * 10) / 10] as const)
+    .filter(([, degrees]) => degrees > 0 && degrees < 360);
+  if (turns.length) p.set("t", turns.map(([id, degrees]) => `${id}:${degrees}`).join(","));
   return p.toString();
 }
 
@@ -122,6 +131,15 @@ export function decodeState(query: string): PlanState {
       })
       .filter((m): m is FleetEntry => !!m)
       .slice(0, MAX_FLEET),
+    turns: Object.fromEntries(
+      list(p.get("t"))
+        .map((entry) => {
+          const cut = entry.lastIndexOf(":");
+          return [entry.slice(0, cut), Number(entry.slice(cut + 1))] as const;
+        })
+        .filter(([id, degrees]) => /^[\w-]+$/.test(id) && Number.isFinite(degrees) && degrees > 0 && degrees < 360)
+        .slice(0, 12),
+    ),
     weights: Object.fromEntries(
       list(p.get("w"))
         .map((entry) => {

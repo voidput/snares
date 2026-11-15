@@ -45,6 +45,12 @@ if (positioned.length === 0) {
   );
 }
 
+/** For a place that turns with a body: the body and the offset from its centre. */
+function turning(location) {
+  if (!location.local || !location.turnsWith) return {};
+  return { rides: key(location.turnsWith), local: [location.local.x, location.local.y, location.local.z].map((v) => Math.round(v)) };
+}
+
 const systems = new Map();
 for (const location of positioned) {
   const kind = kindOf(location);
@@ -70,6 +76,10 @@ for (const location of positioned) {
     armistice: location.armisticeRadius,
     monitored: location.monitoredRadius,
     jammer: location.jammerRadius,
+    // Inside its body's rotating zone: it turns with the body (see src/lib/spin.ts).
+    ...turning(location),
+    spin: location.rotationHours,
+    grid: location.gridRadius,
   });
 }
 
@@ -93,6 +103,7 @@ for (const location of starmap.locations) {
     on: key(body.recordName),
     pos: [body.position.x, body.position.y, body.position.z].map((v) => Math.round(v)),
     arrival: body.quantum?.arrivalRadius,
+    ...turning(location),
   });
 }
 

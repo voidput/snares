@@ -26,6 +26,7 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/pick.ts` | What the pointer is on (`pickNearest`) and the order labels and picks follow (`mapRank`). |
 | `src/lib/markers.ts` | Orbital markers (OM-1..6): `markersOf` a body, `withMarkers` for a system. Derived at load, not baked. |
 | `src/lib/routing.ts` | `obstructions` on a straight line, and `findPath`: the markers a blocked jump stops at. |
+| `src/lib/spin.ts` | Places that turn with a body: `turned` positions for a set of turns, `lastStops` by latitude, `holdWindow`, `turnFrom` a position read in game. |
 | `src/lib/fleet.ts` | Several ships on one leg: `planFleet` gives each a role and a `Leg`; `entryPoints` and `ownHold` say where a snare leaves its catch and whether a dampener reaches it. |
 | `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
@@ -47,6 +48,16 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 The game will not plot a jump through a star, planet or moon; it plots several jumps by that body's orbital markers. `findPath` models that as the shortest chain of clear jumps over the markers of whatever is in the way (Dijkstra over a handful of points, widened up to three times when a hop is itself blocked). `plotted` in `plan.ts` then restarts the route from the last marker: `origin` becomes the marker, `spread` the drift, and `via` and `from` keep the stops and the true start for the map and the route table. `solvePlan` and the scout both go through it, so a place behind a planet counts with the direction it really arrives from. Without markers in the body list nothing is rerouted and the route is flagged as blocked, as before.
 
 Marker positions are derived (`markers.ts`): six per body on the system axes, OM-1 and OM-2 over the poles, at `√2 × obstruction radius` plus a margin. The files hold the spawn rule and the 1 km arrival radius only; the radius is fitted to measured distances and the routing itself is a model, not game data.
+
+## Turning places
+
+A planet's or moon's container gives `planetRotationSpeed` (hours a turn, baked as `spin`) and `gridRadius` (baked as `grid`): the rotating zone. A place the container puts inside the zone is baked with `rides` (the body) and `local` (its offset from the body's centre, unturned); its `pos` is that same unturned instant. Outside the zone a place holds still. The files do not say where the turn is at any moment, so `PlanState.turns` holds an angle per body, set by the pilot, and `turned` moves the riders before the planner sees them. Orbital markers do not turn.
+
+Surface places keep standing for their body (`on`): a city is planned as its planet. Their `local` is used for what does not depend on the moment: `lastStops` samples a full turn for the nearest marker, which is fixed by latitude.
+
+`holdWindow` scans time either side of now, re-plotting the routes with every involved body turned on, and reports how long the planned spot keeps its cover. A spot inside a body's zone is turned with it, on the assumption that a ship at rest there rides the zone.
+
+The rule that the zone decides what turns, the direction of the turn and the parked-ship assumption are a model: they fit what is seen in game (a low station stays over its city) but are not stated in the files.
 
 ## Dampen mode
 

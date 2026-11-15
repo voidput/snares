@@ -42,6 +42,17 @@ export interface Body {
    * whatever comm array or station covers the space around it (Grim HEX).
    */
   jammer?: number;
+  /**
+   * Set on a place that turns with a planet or moon, on its surface or in low orbit
+   * inside its rotating zone: the id of that body. See lib/spin.ts.
+   */
+  rides?: string;
+  /** With `rides`: offset from that body's centre with the body unturned, metres. */
+  local?: Vec3;
+  /** On a planet or moon: hours it takes to turn once. */
+  spin?: number;
+  /** On a planet or moon: radius of its rotating zone, metres. */
+  grid?: number;
   /** Number of services the place offers (refuel, shops, ...), if any. */
   services?: number;
   /** Has a refinery: miners arrive here loaded. */

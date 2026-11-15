@@ -33,12 +33,18 @@ const strings = (v: unknown): string[] =>
  * back to the default, and the link codec then applies the same limits a shared link gets.
  */
 export function sanitizeState(raw: unknown): PlanState {
-  if (!isObject(raw)) return { ...DEFAULT_STATE, weights: {}, fleet: [] };
+  if (!isObject(raw)) return { ...DEFAULT_STATE, weights: {}, fleet: [], turns: {} };
   const r = raw;
   const weights: Record<string, number> = {};
   if (isObject(r.weights)) {
     for (const [id, weight] of Object.entries(r.weights)) {
       if (typeof weight === "number" && Number.isFinite(weight) && !id.includes(",")) weights[id] = weight;
+    }
+  }
+  const turns: Record<string, number> = {};
+  if (isObject(r.turns)) {
+    for (const [id, degrees] of Object.entries(r.turns)) {
+      if (typeof degrees === "number" && Number.isFinite(degrees)) turns[id] = degrees;
     }
   }
   const candidate: PlanState = {
@@ -66,6 +72,7 @@ export function sanitizeState(raw: unknown): PlanState {
           .filter((m) => m.role === "split" || m.role === "hold" || m.role === "backstop")
           .map((m) => ({ role: m.role as FleetRole, ship: typeof m.ship === "string" && /^[\w-]+$/.test(m.ship) ? m.ship : undefined }))
       : [],
+    turns,
   };
   return decodeState(encodeState(candidate));
 }

@@ -28,7 +28,8 @@ import { exportPlans, loadPlans, mergePlans, parsePlanFile, storePlans, upsertPl
 import { decodeState, DEFAULT_STATE, encodeState, MAX_FLEET, type FleetRole, type PlanState } from "./lib/share";
 import { parseShowLocation } from "./lib/showlocation";
 import type { Body, Universe } from "./lib/types";
-import { distance, dot, length, sub } from "./lib/vec";
+import { carrierOf, holdWindow, lastStops, rotateZ, turned, turnFrom, turnIn, turnSpeed } from "./lib/spin";
+import { add, distance, dot, length, sub } from "./lib/vec";
 
 /** Shown on a first visit, so the page opens on a solved plan rather than a form. */
 const EXAMPLE: Partial<PlanState> = {
@@ -194,7 +195,10 @@ export function App() {
 
   const system = universe?.systems.find((s) => s.name === state.system) ?? universe?.systems[0];
   // Orbital markers are not in the data file: they are derived from each body.
-  const bodies = useMemo(() => withMarkers(system?.bodies ?? []), [system]);
+  // Places in a body's rotating zone sit where the plan's turn of that body puts them.
+  const turnsKey = JSON.stringify(state.turns);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- keyed on the turns' content, not the object
+  const bodies = useMemo(() => withMarkers(turned(system?.bodies ?? [], state.turns)), [system, turnsKey]);
   const byId = useMemo(() => new Map(bodies.map((b) => [b.id, b])), [bodies]);
 
   // Not caring about armistice means planning as if no zone were there.
@@ -266,6 +270,60 @@ export function App() {
   const update = (patch: Partial<PlanState>) => setState((s) => ({ ...s, ...patch }));
   const origins = state.originIds.map((id) => byId.get(id)).filter((b): b is Body => !!b);
   const dests = state.destIds.map((id) => byId.get(id)).filter((b): b is Body => !!b);
+
+  // Picked places that turn with a planet or moon, by the body carrying them.
+  const pickedKey = `${state.originIds.join()}|${state.destIds.join()}`;
+  const carriers = useMemo(() => {
+    const found = new Map<string, { body: Body; places: Body[] }>();
+    for (const id of pickedKey.split(/[|,]/)) {
+      const place = byId.get(id);
+      const body = place ? carrierOf(place, byId) : undefined;
+      if (!place || !body) continue;
+      const entry = found.get(body.id) ?? { body, places: [] };
+      if (!entry.places.includes(place)) entry.places.push(place);
+      found.set(body.id, entry);
+    }
+    return [...found.values()];
+  }, [pickedKey, byId]);
+
+  // How long the planned spot keeps its cover while those places turn away.
+  const hold = useMemo(() => {
+    const movers = carriers.filter((c) => c.places.some((p) => !p.on));
+    const role = focusShip?.role;
+    if (!leg || !system || movers.length === 0 || leg.routes.length === 0 || leg.evaluation.coverage <= 0) return undefined;
+    if (role === "hold" || role === "backstop") return undefined;
+    const ids = new Set(leg.routes.map((r) => r.id));
+    const picked = new Set(pickedKey.split(/[|,]/));
+    // Enough of the system to plot routes: what can block a jump, and what was picked.
+    const few = system.bodies.filter((b) => picked.has(b.id) || b.kind === "star" || b.kind === "planet" || b.kind === "moon");
+    // A ship at rest inside a body's rotating zone turns with it.
+    const host = movers.map((c) => c.body).find((b) => b.grid && distance(leg.snare, b.pos) < b.grid);
+    const coverAt = (seconds: number) => {
+      const turns = { ...state.turns };
+      for (const c of movers) turns[c.body.id] = (turns[c.body.id] ?? 0) + turnIn(c.body, seconds);
+      const then = solvePlan({
+        bodies: withMarkers(turned(few, turns)),
+        originIds: state.originIds,
+        destIds: state.destIds,
+        spread: state.spread,
+        drift: state.drift,
+        radius: state.radius,
+        placement: state.placement,
+        mode: state.mode,
+        dampenRange: state.dampen,
+        standoff,
+      })[activeLeg];
+      if (!then) return 0;
+      const spot = host ? add(host.pos, rotateZ(sub(leg.snare, host.pos), turnIn(host, seconds))) : leg.snare;
+      const routes = then.routes.filter((r) => ids.has(r.id));
+      return evaluateLeg({ ...then, routes, drops: then.drops.filter((d) => ids.has(d.id)) }, spot).coverage;
+    };
+    const limit = 3600;
+    const window = holdWindow(coverAt, leg.evaluation.coverage * 0.98, 10, limit);
+    const fastest = Math.max(...movers.flatMap((c) => c.places.filter((p) => !p.on).map((p) => turnSpeed(p, c.body))));
+    return { seconds: window.before + window.after, always: window.before >= limit && window.after >= limit, host, fastest, movers };
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- state fields listed one by one
+  }, [carriers, leg, system, focusShip?.role, pickedKey, turnsKey, state.spread, state.drift, state.radius, state.placement, state.mode, state.dampen, standoff, activeLeg]);
   const targetDrive = universe?.drives.find((d) => d.id === state.targetDrive);
   const myDrive = universe?.drives.find((d) => d.id === state.myDrive);
   const monitorReach = bodies.find((b) => b.monitored)?.monitored ?? 50_000_000;
@@ -690,6 +748,79 @@ export function App() {
               </span>
             </div>
           )}
+
+          {Array.isArray(carriers) &&
+            carriers.map(({ body, places }) => {
+              const inSpace = places.filter((p) => !p.on);
+              const onGround = places.filter((p) => p.on);
+              const degrees = Math.round((((state.turns[body.id] ?? 0) % 360) + 360) % 360);
+              const setTurn = (value: number) => update({ turns: { ...state.turns, [body.id]: value } });
+              const stopsFor = places.find((p) => dests.includes(p));
+              const stops = stopsFor ? lastStops(stopsFor, body, bodies) : [];
+              return (
+                <div className="turning" key={body.id}>
+                  <h3>{body.name} turns</h3>
+                  <p className="note">
+                    Once every {formatDuration((body.spin ?? 0) * 3600)}, and {places.map((p) => p.name).join(", ")} with it
+                    {inSpace.length > 0 && `: ${inSpace.map((p) => `${p.name} at ${formatDistance(turnSpeed(p, body) * 60)} a minute`).join(", ")}`}. The game
+                    files give the rate, not where the turn is right now.
+                  </p>
+                  {inSpace.length > 0 && (
+                    <>
+                      <div className="row">
+                        <label htmlFor={`turn-${body.id}`}>Turn</label>
+                        <input
+                          id={`turn-${body.id}`}
+                          type="range"
+                          min={0}
+                          max={359}
+                          step={1}
+                          value={degrees}
+                          onChange={(e) => setTurn(Number(e.target.value))}
+                        />
+                        <span className="turn-value">{degrees}°</span>
+                      </div>
+                      <input
+                        className="turn-paste"
+                        type="text"
+                        aria-label={`Paste /showlocation while at ${inSpace[0].name}`}
+                        placeholder={`At ${inSpace[0].name}? Paste /showlocation to set the turn`}
+                        onChange={(e) => {
+                          const at = parseShowLocation(e.target.value);
+                          const found = at ? turnFrom(at, inSpace[0], body) : undefined;
+                          if (found !== undefined) setTurn(found);
+                        }}
+                      />
+                    </>
+                  )}
+                  {onGround.length > 0 && (
+                    <p className="note">
+                      {onGround.map((p) => p.name).join(", ")} {onGround.length === 1 ? "is" : "are"} on the ground. The plan aims at {body.name}'s
+                      centre; real traffic aims at the place itself, up to {formatDistance(Math.max(...onGround.map((p) => length(p.local ?? [0, 0, 0]))))} off
+                      that line near {body.name} and moving {formatDistance(Math.max(...onGround.map((p) => turnSpeed(p, body))) * 60)} a minute. So a
+                      spot close to {body.name} is a rough one. For a spot that holds, catch at the marker the jump stops at.
+                    </p>
+                  )}
+                  {stopsFor && stops.length > 0 && (
+                    <>
+                      <p className="note">When {stopsFor.name} is on the far side, the jump stops at the nearest orbital marker first:</p>
+                      <ul className="stops">
+                        {stops.map(({ marker, share }) => (
+                          <li key={marker.id}>
+                            <span className="dot kind-marker" />
+                            <span className="stop-name">{marker.name}</span>
+                            <span className="stop-share">{share >= 0.995 ? "always" : `${formatPercent(share)} of a turn`}</span>
+                            <button type="button" className="linkish" onClick={() => update({ destIds: [marker.id], activeLeg: 0 })}>
+                              catch it there
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </>
+                  )}
+                </div>
+              );
+            })}
 
           {dests.length > 0 && (
             <div className="catch">
@@ -1193,6 +1324,20 @@ export function App() {
                         </button>
                       </>
                     )}
+                  </p>
+                </div>
+              )}
+
+              {hold && (
+                <div className="law">
+                  <p className={hold.always || hold.seconds >= 600 ? "law-line good" : "law-line warnish"}>
+                    <b>Holds</b>
+                    {hold.always
+                      ? `${hold.movers.flatMap((c) => c.places.filter((p) => !p.on).map((p) => p.name)).join(", ")} turn${hold.movers.length === 1 && hold.movers[0].places.length === 1 ? "s" : ""} with ${hold.movers.map((c) => c.body.name).join(", ")}, but this spot keeps its cover through it.`
+                      : `About ${formatDuration(hold.seconds)} around this moment, then the turn carries the lines off the spot (${hold.movers
+                          .flatMap((c) => c.places.filter((p) => !p.on).map((p) => p.name))
+                          .join(", ")} at up to ${formatDistance(hold.fastest * 60)} a minute). Set the turn again and re-plan.`}
+                    {hold.host && ` Parked here you are inside ${hold.host.name}'s rotating zone and turn with it; that is counted.`}
                   </p>
                 </div>
               )}

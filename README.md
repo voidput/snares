@@ -41,6 +41,7 @@ file. Runs on GitHub Pages.
 - **Map**: pan, zoom from system scale down to the 20 km snare, rotate into 3D.
 - **Blocked routes** plotted round the body by its orbital markers, as the game does, with the marker offered as a place to catch.
 - **Orbital markers** (OM-1 to OM-6) as origins, destinations and lines to fly in on.
+- **Turning places**: stations in low orbit and cities ride their planet's rotation. Set the turn, see how long a spot holds, and which marker a city's traffic stops at.
 - The plan lives in the URL, so a link is a share.
 - Save plans by name in the browser and switch between them; export and import them as JSON.
 - Plan for a fleet: split routes between ships, post a dampener on the catch, line up a backstop.

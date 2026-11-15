@@ -6,6 +6,17 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Places that turn with their planet
+
+Type: Added. Effort: L3.
+
+- Rotation from the game files ([architecture](architecture.md)): every planet and moon container carries `planetRotationSpeed` (hours a turn: Hurston 2.48, microTech 4.12) and `gridRadius`, its rotating zone. What the container places inside the zone turns with the body: the surface, and low orbit too. Everus Harbor, Port Tressler, Baijini Point, Seraphim, Grim HEX and most comm arrays move (Port Tressler about 20 km a minute); moons and Lagrange stations do not.
+- Where the turn is at a given moment is not in the files. A plan now carries the turn of each body involved (`t` in the link, and in saved plans). Route tab: a turn slider per body, or paste `/showlocation` while at the station to set it.
+- Turning a station changes which way routes come in and whether its planet is in the way, so the marker stop appears and goes as it turns.
+- Spot tab says how long the spot **holds**: how long it keeps its cover while the places turn. A ship parked inside the body's rotating zone is taken to turn with it.
+- Cities and outposts: surface coordinates are now baked (513 places). Their latitude gives the marker a jump stops at when the place is on the far side, and for what share of a turn (New Babbage: microTech OM-1 always; Area18: the four equatorial markers a quarter each), each with "catch it there". The plan for a city still aims at the planet's centre, and now says how rough that is close in.
+- Not from the files, so stated as model: the zone rule for what turns, the direction of the turn, and that a parked ship turns with the zone.
+
 ## 2026-11-14 — Orbital markers and routes round a body
 
 Type: Added, Changed. Effort: L2.

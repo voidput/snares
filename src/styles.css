@@ -1523,3 +1523,58 @@ button.linkish:hover:not(:disabled) {
   background: none;
   color: #8fe0ff;
 }
+
+/* Places that turn with a planet: the turn control and the marker stops. */
+.turning {
+  display: grid;
+  gap: 8px;
+  padding: 10px;
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--panel-2);
+}
+.turning h3 {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text);
+}
+.turning .note {
+  margin: 0;
+}
+.turning .row input[type="range"] {
+  flex: 1;
+  min-width: 0;
+}
+.turn-value {
+  min-width: 38px;
+  text-align: right;
+  font-family: var(--mono, ui-monospace, monospace);
+  font-size: 12px;
+  color: var(--text);
+}
+.turn-paste {
+  width: 100%;
+  min-width: 0;
+}
+.stops {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 4px;
+  font-size: 12px;
+}
+.stops li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.stop-name {
+  color: var(--text);
+}
+.stop-share {
+  flex: 1;
+  color: var(--muted);
+}
