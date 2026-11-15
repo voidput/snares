@@ -35,5 +35,7 @@ export function pickNearest<T>(candidates: PickCandidate<T>[], previous?: T, rea
 export function mapRank(kind: string, weight = 0): number {
   if (kind === "star") return 0;
   if (kind === "planet") return 1;
+  // Orbital markers crowd every planet and moon: last to be labelled or picked.
+  if (kind === "marker") return 20;
   return 2 + Math.max(0, 10 - weight);
 }

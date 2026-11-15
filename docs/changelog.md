@@ -6,6 +6,17 @@ updated: 2026-11-14
 
 # Changelog
 
+## 2026-11-14 — Orbital markers and routes round a body
+
+Type: Added, Changed. Effort: L2.
+
+- Orbital markers ([architecture](architecture.md)): OM-1 to OM-6 around every planet and moon, derived at load (`src/lib/markers.ts`). The game files carry the rule (Planet and Moon types spawn `NavPoint_SubPoint`, the `CardinalPoint` record) but no positions. Radius is a fit to player-measured distances: `√2 × obstruction radius + 7,177 m` for moons, `+ 10,000 m` for planets and stars. Exact for most Stanton moons, ArcCorp and microTech; unchecked in Pyro and Nyx.
+- Markers can be picked as origin, destination or start (type "om" in a picker), show on the map once zoomed in, and count as lines to fly in on.
+- Blocked routes are now plotted the way the game does it ([architecture](architecture.md)): a jump with a star, planet or moon in the way stops at that body's markers, so the last run into the destination comes from the marker (`src/lib/routing.ts`). Before, such a route was only flagged. About a quarter of Stanton's station-to-station routes are affected.
+- The route table names the marker and offers "catch it there": the same plan aimed at the marker, where the target drops out 1 km short with no armistice zone.
+- The scout counts places that come in round a body; it used to leave them out.
+- The route planner itself is not in the game files. The model is the shortest chain of clear jumps over the markers of the bodies in the way.
+
 ## 2026-11-14 — Fleet planning and the Mantis dampener readout
 
 Type: Added. Effort: L3.

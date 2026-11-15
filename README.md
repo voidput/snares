@@ -39,7 +39,8 @@ file. Runs on GitHub Pages.
 - **Position check**: paste `/showlocation` output to see if you are in place.
 - **Target timing** by quantum drive, as an estimate.
 - **Map**: pan, zoom from system scale down to the 20 km snare, rotate into 3D.
-- **Blocked routes** flagged when the straight line passes through a body.
+- **Blocked routes** plotted round the body by its orbital markers, as the game does, with the marker offered as a place to catch.
+- **Orbital markers** (OM-1 to OM-6) as origins, destinations and lines to fly in on.
 - The plan lives in the URL, so a link is a share.
 - Save plans by name in the browser and switch between them; export and import them as JSON.
 - Plan for a fleet: split routes between ships, post a dampener on the catch, line up a backstop.

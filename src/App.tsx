@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { LocationPicker } from "./components/LocationPicker";
+import { withMarkers } from "./lib/markers";
 import { Crosshair, FolderOpen, Navigation, PanelRightClose, PanelRightOpen, Radar, Route as RouteIcon, ScanSearch, Ship, Timer } from "lucide-react";
 import { MapView, type MapHandle } from "./components/MapView";
 import { TabList, TabPanel, type TabDef } from "./components/Tabs";
@@ -192,7 +193,8 @@ export function App() {
   }, [encoded]);
 
   const system = universe?.systems.find((s) => s.name === state.system) ?? universe?.systems[0];
-  const bodies = useMemo(() => system?.bodies ?? [], [system]);
+  // Orbital markers are not in the data file: they are derived from each body.
+  const bodies = useMemo(() => withMarkers(system?.bodies ?? []), [system]);
   const byId = useMemo(() => new Map(bodies.map((b) => [b.id, b])), [bodies]);
 
   // Not caring about armistice means planning as if no zone were there.
@@ -280,7 +282,7 @@ export function App() {
   const weights = useMemo(() => anchorWeights(bodies, state.weights), [bodies, weightsKey]); // eslint-disable-line react-hooks/exhaustive-deps
   const deviceKey = `${system?.name}|${state.radius}|${state.spread}|${state.mode}|${state.dampen}|${weightsKey}|${standoff}|${state.careComms}`;
   const catchKey = `${deviceKey}|${state.destIds[0] ?? ""}`;
-  const catchOptions = { radius: state.radius, spread: state.spread, mode: state.mode, dampenRange: state.dampen, weights, standoff };
+  const catchOptions = { radius: state.radius, spread: state.spread, mode: state.mode, dampenRange: state.dampen, weights, standoff, drift: state.drift };
 
   // A scan belongs to one system and one device; a change to either stops it.
   useEffect(() => () => void scanRun.current++, [deviceKey]);
@@ -1240,6 +1242,35 @@ export function App() {
                           {blocks && (
                             <span className="blocked" title={`The straight line passes through ${blocks.join(", ")}; the game will not plot this jump directly.`}>
                               blocked by {blocks.join(", ")}
+                            </span>
+                          )}
+                          {route.via && route.via.length > 0 && (
+                            <span
+                              className="rerouted"
+                              title={`A body is in the way, so the game plots this jump through ${route.via.map((v) => v.name).join(", then ")}. The target drops out there and spools again.`}
+                            >
+                              stops at {route.via.length === 1 ? "the marker" : `${route.via.length} markers`} first
+                              {leg.index === 0 && (
+                                <>
+                                  {" · "}
+                                  <button
+                                    type="button"
+                                    className="linkish"
+                                    title={`Plan the catch at ${route.via[0].name} instead: everything on this plan that stops there first.`}
+                                    onClick={() => {
+                                      const stop = route.via?.[0]?.id;
+                                      if (!stop) return;
+                                      update({
+                                        originIds: leg.routes.filter((r) => r.via?.[0]?.id === stop).map((r) => r.id),
+                                        destIds: [stop],
+                                        activeLeg: 0,
+                                      });
+                                    }}
+                                  >
+                                    catch it there
+                                  </button>
+                                </>
+                              )}
                             </span>
                           )}
                         </td>

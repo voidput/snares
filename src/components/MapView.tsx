@@ -4,7 +4,7 @@ import { formatDistance } from "../lib/format";
 import { mapRank, pickNearest } from "../lib/pick";
 import { arrivalOf, type Approach, type Leg } from "../lib/plan";
 import type { Body, BodyKind } from "../lib/types";
-import { add, scale, sub, type Vec3 } from "../lib/vec";
+import { add, distance, scale, sub, type Vec3 } from "../lib/vec";
 
 export interface MapHandle {
   fitPlan(): void;
@@ -54,8 +54,11 @@ const COLORS: Record<BodyKind, string> = {
   station: "#5fe0c0",
   jump: "#ff7ad9",
   asteroid: "#77828f",
+  marker: "#8ea2b8",
   other: "#77828f",
 };
+/** Orbital markers appear once they sit this many pixels from their body. */
+const MARKER_ZOOM_PX = 60;
 const ROUTE = "#3cc8ff";
 const SNARE = "#ffb547";
 const DAMPEN = "#c48cff";
@@ -231,6 +234,24 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
           ctx.fill();
         }
 
+        if (route.via && route.from) {
+          // The jumps before the last one: out to each orbital marker in turn.
+          ctx.beginPath();
+          const [fx, fy] = project(route.from);
+          ctx.moveTo(fx, fy);
+          for (const stop of route.via) {
+            const [vx, vy] = project(stop.pos);
+            ctx.lineTo(vx, vy);
+          }
+          ctx.setLineDash([6, 5]);
+          ctx.strokeStyle = ROUTE;
+          ctx.globalAlpha = active ? 0.5 : 0.2;
+          ctx.lineWidth = 1;
+          ctx.stroke();
+          ctx.setLineDash([]);
+          ctx.globalAlpha = 1;
+        }
+
         ctx.beginPath();
         ctx.moveTo(ox, oy);
         ctx.lineTo(dx, dy);
@@ -266,12 +287,19 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
     for (const leg of s.legs) {
       picked.add(leg.dest.id);
       if (leg.index === 0) for (const r of leg.routes) picked.add(r.id);
+      for (const r of leg.routes) for (const stop of r.via ?? []) picked.add(stop.id);
     }
+    const parents = new Map(s.bodies.map((b) => [b.id, b]));
     for (const body of s.bodies) {
       // A surface location shares its body's spot; it is drawn only once picked.
       if (body.on && !picked.has(body.id)) continue;
       const p = project(body.pos);
       if (!onScreen(p, 200)) continue;
+      if (body.kind === "marker" && !picked.has(body.id)) {
+        // Six to a body: shown once zoomed in far enough to tell them apart.
+        const parent = parents.get(body.parent ?? "");
+        if (body.hidden || !parent || distance(body.pos, parent.pos) * c.ppm < MARKER_ZOOM_PX) continue;
+      }
       const color = COLORS[body.kind];
       const trueR = (body.obstruction ?? 0) * c.ppm;
       const isPicked = picked.has(body.id);
@@ -503,7 +531,7 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
   const fitSystem = useCallback(() => fit(scene.current.bodies.map((b) => b.pos)), [fit]);
   const fitPlan = useCallback(() => {
     const s = scene.current;
-    const points = s.legs.flatMap((l) => [l.dest.pos, l.snare, ...l.routes.map((r) => r.origin)]);
+    const points = s.legs.flatMap((l) => [l.dest.pos, l.snare, ...l.routes.map((r) => r.from ?? r.origin)]);
     if (points.length < 2) fitSystem();
     else fit(points);
   }, [fit, fitSystem]);
@@ -583,10 +611,18 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
     for (const leg of scene.current.legs) {
       picked.add(leg.dest.id);
       for (const r of leg.routes) picked.add(r.id);
+      for (const r of leg.routes) for (const stop of r.via ?? []) picked.add(stop.id);
     }
+    const parents = new Map(scene.current.bodies.map((b) => [b.id, b]));
+    // An orbital marker can be picked only while it is drawn.
+    const shown = (body: Body) => {
+      if (body.kind !== "marker" || picked.has(body.id)) return true;
+      const parent = parents.get(body.parent ?? "");
+      return !body.hidden && !!parent && distance(body.pos, parent.pos) * camera.current.ppm >= MARKER_ZOOM_PX;
+    };
     return pickNearest(
       scene.current.bodies
-        .filter((body) => !body.on)
+        .filter((body) => !body.on && shown(body))
         .map((body) => {
           const [px, py] = project(body.pos);
           // Same order the labels are placed in, so the pick is the name already on screen.

@@ -12,6 +12,7 @@ const KIND_LABEL: Record<BodyKind, string> = {
   station: "Station",
   jump: "Jump point",
   asteroid: "Asteroid",
+  marker: "Orbital marker",
   other: "Other",
 };
 
@@ -39,13 +40,14 @@ export function LocationPicker({ bodies, exclude, placeholder, onPick }: Props) 
     const list = Array.isArray(bodies) ? bodies : [];
     const names = new Map(list.map((b) => [b.id, b.name]));
     return list
-      .filter((b) => !skip.has(b.id))
+      // A star's markers are stops on a plotted route, never a destination.
+      .filter((b) => !skip.has(b.id) && !(b.kind === "marker" && b.hidden))
       .filter((b) => {
         const hay = `${b.name} ${KIND_LABEL[b.kind]}`.toLowerCase();
         return words.every((w) => hay.includes(w));
       })
       // With nothing typed, asteroid bases would bury everything else.
-      .filter((b) => q.length > 0 || (b.kind !== "asteroid" && b.kind !== "surface"))
+      .filter((b) => q.length > 0 || (b.kind !== "asteroid" && b.kind !== "surface" && b.kind !== "marker"))
       // Markers the in-game star map hides sort after the ones a pilot can pick.
       .sort((a, b) => Number(!!a.hidden) - Number(!!b.hidden))
       .slice(0, 60)

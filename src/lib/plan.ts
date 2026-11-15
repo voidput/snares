@@ -20,6 +20,7 @@ import {
   type Evaluation,
   type Route,
 } from "./solver";
+import { findPath, obstructions } from "./routing";
 import type { Body } from "./types";
 import { add, closestOnSegment, distance, dot, normalize, scale, sub, type Vec3 } from "./vec";
 
@@ -159,17 +160,27 @@ export interface PlanInput {
   standoff?: number;
 }
 
-/** Bodies whose obstruction sphere the straight line a→b passes through. */
-export function obstructions(a: Vec3, b: Vec3, bodies: Body[], ignore: Set<string>): Body[] {
-  const hits: Body[] = [];
-  for (const body of bodies) {
-    if (!body.obstruction || ignore.has(body.id)) continue;
-    if (body.kind !== "star" && body.kind !== "planet" && body.kind !== "moon") continue;
-    // An endpoint inside the sphere is a ship leaving or arriving there.
-    if (distance(a, body.pos) < body.obstruction || distance(b, body.pos) < body.obstruction) continue;
-    if (closestOnSegment(body.pos, a, b).distance < body.obstruction) hits.push(body);
-  }
-  return hits;
+export { obstructions };
+
+/**
+ * The route as the game plots it: unchanged when the straight line to `dest`
+ * is clear, and otherwise restarted from the last orbital marker the jump has
+ * to stop at. A target drops out there and spools again, so the final run comes
+ * from the marker, give or take `drift`. A route with no clear way round is
+ * returned as it is, and shows up as blocked.
+ */
+export function plotted(route: Route, dest: Body, bodies: Body[], drift: number): Route {
+  const stops = findPath(route.origin, dest.pos, bodies, new Set([anchorOf(dest)]));
+  const last = stops?.[stops.length - 1];
+  if (!stops || !last) return route;
+  return {
+    ...route,
+    label: `${route.label} › ${last.name}`,
+    origin: last.pos,
+    spread: drift,
+    from: route.from ?? route.origin,
+    via: [...(route.via ?? []), ...stops.map((b) => ({ id: b.id, name: b.name, pos: b.pos }))],
+  };
 }
 
 /** Where each route ends its jump: on the arrival sphere, on the side it came from. */
@@ -290,6 +301,7 @@ export function solvePlan(input: PlanInput): Leg[] {
 
   for (let i = 0; i < dests.length; i++) {
     const dest = dests[i];
+    routes = routes.map((r) => plotted(r, dest, input.bodies, input.drift));
     legs.push(
       solveLeg(
         i,
@@ -414,23 +426,28 @@ export function bestCatches(
     weights?: Weights;
     /** Distance to keep between the snare sphere and an armistice zone, metres. */
     standoff?: number;
+    /** How far a target may move after stopping at an orbital marker, metres. */
+    drift?: number;
   },
 ): Catch[] {
   const weigh = (b: Body) => weightOf(b, options.weights);
+  const drift = options.drift ?? POINT_SPREAD;
   if (options.mode === "dampen") {
-    return bestHolds(bodies, dest, options.dampenRange ?? 0, options.spread, weigh, options.limit);
+    return bestHolds(bodies, dest, options.dampenRange ?? 0, options.spread, weigh, drift, options.limit);
   }
   const corridorOptions = { radius: options.radius, arrival: effectiveArrival(dest, options.standoff ?? 0) };
   const ignore = new Set([anchorOf(dest)]);
 
   // Surface locations stand for their body, which is already a candidate.
   const candidates = bodies
-    .filter((b) => b.kind !== "star" && !b.hidden && !b.on && anchorOf(b) !== anchorOf(dest))
+    .filter((b) => b.kind !== "star" && b.kind !== "marker" && !b.hidden && !b.on && anchorOf(b) !== anchorOf(dest))
     .filter((b) => distance(b.pos, dest.pos) > corridorOptions.arrival + options.radius)
-    .filter((b) => obstructions(b.pos, dest.pos, bodies, new Set([...ignore, b.id])).length === 0)
-    .map((b) => ({
-      route: { id: b.id, label: b.name, origin: b.pos, spread: spreadOf(b, options.spread) } satisfies Route,
-      dir: normalize(sub(b.pos, dest.pos)),
+    // A jump with a body in the way comes in from that body's orbital marker instead.
+    .map((b) => ({ b, route: plotted({ id: b.id, label: b.name, origin: b.pos, spread: spreadOf(b, options.spread) }, dest, bodies, drift) }))
+    .filter(({ b, route }) => obstructions(route.origin, dest.pos, bodies, new Set([...ignore, b.id])).length === 0)
+    .map(({ b, route }) => ({
+      route,
+      dir: normalize(sub(route.origin, dest.pos)),
       major: b.kind !== "asteroid",
       weight: weigh(b),
     }))
@@ -548,16 +565,19 @@ function bestHolds(
   range: number,
   spread: SpreadMode,
   weigh: (body: Body) => number,
+  drift: number,
   limit?: number,
 ): Catch[] {
   const ignore = new Set([anchorOf(dest)]);
-  const origins = bodies
-    .filter((b) => b.kind !== "star" && !b.hidden && !b.on && anchorOf(b) !== anchorOf(dest))
+  const plottedRoutes = bodies
+    .filter((b) => b.kind !== "star" && b.kind !== "marker" && !b.hidden && !b.on && anchorOf(b) !== anchorOf(dest))
     .filter((b) => distance(b.pos, dest.pos) > arrivalOf(dest))
-    .filter((b) => obstructions(b.pos, dest.pos, bodies, new Set([...ignore, b.id])).length === 0);
+    .map((b) => ({ b, route: plotted({ id: b.id, label: b.name, origin: b.pos, spread: spreadOf(b, spread) }, dest, bodies, drift) }))
+    .filter(({ b, route }) => obstructions(route.origin, dest.pos, bodies, new Set([...ignore, b.id])).length === 0);
+  const origins = plottedRoutes.map((x) => x.b);
   const drops = dropPoints(
     dest,
-    origins.map((b) => ({ id: b.id, label: b.name, origin: b.pos, spread: spreadOf(b, spread) })),
+    plottedRoutes.map((x) => x.route),
   );
   const candidates = drops
     .map((drop, index) => ({ drop, major: origins[index].kind !== "asteroid", weight: weigh(origins[index]) }))
@@ -617,5 +637,5 @@ function bestHolds(
 
 /** Places worth scanning as a destination: ones pilots actually fly to. */
 export function scanTargets(bodies: Body[]): Body[] {
-  return bodies.filter((b) => b.kind !== "star" && b.kind !== "asteroid" && b.kind !== "other" && !b.hidden && !b.on);
+  return bodies.filter((b) => b.kind !== "star" && b.kind !== "asteroid" && b.kind !== "other" && b.kind !== "marker" && !b.hidden && !b.on);
 }

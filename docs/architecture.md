@@ -24,6 +24,8 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 | `src/lib/share.ts` | Plan state to and from the URL hash. |
 | `src/lib/plans.ts` | Saved plans: `localStorage` list, JSON export file, import with validation (`sanitizeState` runs every plan through the link codec, so a file gets the same limits as a link). |
 | `src/lib/pick.ts` | What the pointer is on (`pickNearest`) and the order labels and picks follow (`mapRank`). |
+| `src/lib/markers.ts` | Orbital markers (OM-1..6): `markersOf` a body, `withMarkers` for a system. Derived at load, not baked. |
+| `src/lib/routing.ts` | `obstructions` on a straight line, and `findPath`: the markers a blocked jump stops at. |
 | `src/lib/fleet.ts` | Several ships on one leg: `planFleet` gives each a role and a `Leg`; `entryPoints` and `ownHold` say where a snare leaves its catch and whether a dampener reaches it. |
 | `src/components/Tabs.tsx` | `TabList` / `TabPanel`: the left rail and the result tabs. One tab stop, arrow keys move. |
 | `src/lib/showlocation.ts` | Parse pasted in-game coordinates. |
@@ -39,6 +41,12 @@ Static single-page app (Vite, React, TypeScript). No backend. Deployed to GitHub
 - Both terms scale linearly with distance from the destination. So: find unit direction `u` minimising `phi(u) = max_i (sin(theta_i) + spread_i / L_i * cos(theta_i))`, then full coverage holds for distances up to `R / phi`. Minimised by a minimum-enclosing-ball iteration and a pattern-search polish.
 - Near limit: `arrival + R`. If the far limit is below it, no full-coverage position exists; the solver then searches for the direction at the near limit with the highest mean coverage (area of each cone cross-section inside the snare).
 - Route change legs start on the previous destination's arrival sphere, on the side the target came from, with `spread` set to the drift distance.
+
+## Routes round a body
+
+The game will not plot a jump through a star, planet or moon; it plots several jumps by that body's orbital markers. `findPath` models that as the shortest chain of clear jumps over the markers of whatever is in the way (Dijkstra over a handful of points, widened up to three times when a hop is itself blocked). `plotted` in `plan.ts` then restarts the route from the last marker: `origin` becomes the marker, `spread` the drift, and `via` and `from` keep the stops and the true start for the map and the route table. `solvePlan` and the scout both go through it, so a place behind a planet counts with the direction it really arrives from. Without markers in the body list nothing is rerouted and the route is flagged as blocked, as before.
+
+Marker positions are derived (`markers.ts`): six per body on the system axes, OM-1 and OM-2 over the poles, at `√2 × obstruction radius` plus a margin. The files hold the spawn rule and the 1 km arrival radius only; the radius is fitted to measured distances and the routing itself is a model, not game data.
 
 ## Dampen mode
 

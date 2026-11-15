@@ -28,6 +28,13 @@ export interface Route {
   origin: Vec3;
   /** Radius around the origin the target may actually leave from, metres. */
   spread: number;
+  /**
+   * Set when a body is in the way and the game plots the jump round it: the
+   * orbital markers the target stops at. `origin` is then the last of them.
+   */
+  via?: { id: string; name: string; pos: Vec3 }[];
+  /** With `via`: where the target really set out from. */
+  from?: Vec3;
 }
 
 export interface Corridor {

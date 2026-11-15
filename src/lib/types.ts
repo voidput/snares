@@ -10,6 +10,8 @@ export type BodyKind =
   | "jump"
   | "asteroid"
   | "surface"
+  /** An orbital marker (OM-1..6), derived at load: see lib/markers.ts. */
+  | "marker"
   | "other";
 
 export interface Body {

@@ -366,6 +366,9 @@ h2 + .field-label {
 .kind-jump {
   background: #ff7ad9;
 }
+.kind-marker {
+  background: #8ea2b8;
+}
 
 .chips {
   display: flex;
@@ -636,6 +639,11 @@ table.routes {
 .blocked {
   display: block;
   color: var(--bad);
+  font-size: 12px;
+}
+.rerouted {
+  display: block;
+  color: var(--muted);
   font-size: 12px;
 }
 
