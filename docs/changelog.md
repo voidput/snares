@@ -15,6 +15,7 @@ Type: Added. Effort: L3.
 - Turning a station changes which way routes come in and whether its planet is in the way, so the marker stop appears and goes as it turns.
 - Spot tab says how long the spot **holds**: how long it keeps its cover while the places turn. A ship parked inside the body's rotating zone is taken to turn with it.
 - Cities and outposts: surface coordinates are now baked (513 places). Their latitude gives the marker a jump stops at when the place is on the far side, and for what share of a turn (New Babbage: microTech OM-1 always; Area18: the four equatorial markers a quarter each), each with "catch it there". The plan for a city still aims at the planet's centre, and now says how rough that is close in.
+- Map: each turning place draws its path, a dashed circle about its body's axis, once zoomed in; a picked place's path is brighter, and a picked city's ground track shows too.
 - Not from the files, so stated as model: the zone rule for what turns, the direction of the turn, and that a parked ship turns with the zone.
 
 ## 2026-11-14 — Orbital markers and routes round a body

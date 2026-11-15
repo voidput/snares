@@ -59,6 +59,9 @@ const COLORS: Record<BodyKind, string> = {
 };
 /** Orbital markers appear once they sit this many pixels from their body. */
 const MARKER_ZOOM_PX = 60;
+/** A turning place's path is drawn once its circle is this wide, and with this many segments. */
+const TURN_PATH_MIN_PX = 14;
+const TURN_PATH_STEPS = 96;
 const ROUTE = "#3cc8ff";
 const SNARE = "#ffb547";
 const DAMPEN = "#c48cff";
@@ -290,6 +293,35 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       for (const r of leg.routes) for (const stop of r.via ?? []) picked.add(stop.id);
     }
     const parents = new Map(s.bodies.map((b) => [b.id, b]));
+
+    // The path of each place that turns with its body: a circle about the body's axis.
+    for (const place of s.bodies) {
+      const carrier = place.rides ? parents.get(place.rides) : undefined;
+      if (!carrier?.spin || !place.local) continue;
+      const isPicked = picked.has(place.id);
+      // A place on the ground only once picked: hundreds of outposts would bury the planet.
+      if (place.on && !isPicked) continue;
+      const around = Math.hypot(place.local[0], place.local[1]);
+      const px = around * c.ppm;
+      if (px < TURN_PATH_MIN_PX || px > 30000) continue;
+      const centre: Vec3 = [carrier.pos[0], carrier.pos[1], carrier.pos[2] + place.local[2]];
+      if (!onScreen(project(centre), px + 50)) continue;
+      ctx.beginPath();
+      for (let i = 0; i <= TURN_PATH_STEPS; i++) {
+        const a = (i / TURN_PATH_STEPS) * Math.PI * 2;
+        const [x, y] = project([centre[0] + Math.cos(a) * around, centre[1] + Math.sin(a) * around, centre[2]]);
+        if (i === 0) ctx.moveTo(x, y);
+        else ctx.lineTo(x, y);
+      }
+      ctx.setLineDash(place.on ? [2, 6] : [5, 5]);
+      ctx.strokeStyle = COLORS[place.kind];
+      ctx.globalAlpha = isPicked ? 0.7 : 0.28;
+      ctx.lineWidth = isPicked ? 1.2 : 1;
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.globalAlpha = 1;
+    }
+
     for (const body of s.bodies) {
       // A surface location shares its body's spot; it is drawn only once picked.
       if (body.on && !picked.has(body.id)) continue;
