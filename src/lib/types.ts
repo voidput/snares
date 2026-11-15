@@ -49,6 +49,8 @@ export interface Body {
   rides?: string;
   /** With `rides`: offset from that body's centre with the body unturned, metres. */
   local?: Vec3;
+  /** On a planet or moon: its own radius, metres. */
+  radius?: number;
   /** On a planet or moon: hours it takes to turn once. */
   spin?: number;
   /** On a planet or moon: radius of its rotating zone, metres. */

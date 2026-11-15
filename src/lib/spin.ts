@@ -110,3 +110,26 @@ export function holdWindow(coverAt: (seconds: number) => number, floor: number, 
   };
   return { before: scan(-1), after: scan(1) };
 }
+
+export interface Perch {
+  /** Degrees north of the body's equator; negative is south. */
+  latitude: number;
+  /** Height above the body's surface, metres; 0 for a place on the ground. */
+  height: number;
+}
+
+/**
+ * Where a turning place sits on or over its body. Its path is a circle about
+ * the body's axis at this latitude, so seen from over the pole it falls inside
+ * the body's outline whenever the place is not over the equator.
+ */
+export function perchOf(place: Body, body: Body): Perch | undefined {
+  if (!place.local) return undefined;
+  const out = Math.hypot(place.local[0], place.local[1], place.local[2]);
+  if (out === 0) return undefined;
+  const surface = body.radius ?? body.obstruction ?? 0;
+  return {
+    latitude: (Math.asin(place.local[2] / out) * 180) / Math.PI,
+    height: place.on ? 0 : Math.max(0, out - surface),
+  };
+}

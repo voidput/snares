@@ -5,6 +5,7 @@ import { mapRank, pickNearest } from "../lib/pick";
 import { arrivalOf, type Approach, type Leg } from "../lib/plan";
 import type { Body, BodyKind } from "../lib/types";
 import { add, distance, scale, sub, type Vec3 } from "../lib/vec";
+import { perchOf } from "../lib/spin";
 import { behind, frontSpan } from "../lib/view";
 
 export interface MapHandle {
@@ -65,6 +66,8 @@ const MARKER_ZOOM_PX = 60;
 /** The leaned-over view: far enough to part the pole markers from the body, not so far the plane closes up. */
 const TILT_PITCH = 1.0;
 const TILT_YAW = 0.5;
+/** The view leans by itself once a planet carrying a picked turning place is this many pixels in radius. */
+const AUTO_LEAN_PX = 24;
 /** A body is drawn as a lit sphere, and hides what is behind it, once its disc is this wide. */
 const SPHERE_MIN_PX = 8;
 /** A turning place's path is drawn once its circle is this wide, and with this many segments. */
@@ -109,6 +112,42 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
     const ry = up * Math.cos(c.pitch);
     const z = up * Math.sin(c.pitch);
     return [rx * Math.cos(c.yaw) + ry * Math.sin(c.yaw), -rx * Math.sin(c.yaw) + ry * Math.cos(c.yaw), z];
+  }, []);
+
+  /**
+   * Lean the view by itself when a planet with a picked turning place fills enough of the
+   * screen, and stand it back up when zoomed out again. Seen from over the pole such a place's
+   * path falls inside the planet's outline, which reads as if it were under the surface.
+   * Top-down, once asked for, is kept until the picks change.
+   */
+  const lean = useRef({ auto: false, optOut: "" });
+  const autoLean = useCallback(() => {
+    const s = scene.current;
+    const c = camera.current;
+    const byId = new Map(s.bodies.map((b) => [b.id, b]));
+    const picked = new Set<string>();
+    for (const leg of s.legs) {
+      picked.add(leg.dest.id);
+      for (const r of leg.routes) picked.add(r.id);
+    }
+    const carriers = [...picked]
+      .map((id) => byId.get(id))
+      .map((place) => (place?.rides && place.local ? byId.get(place.rides) : undefined))
+      .filter((b): b is Body => !!b?.spin);
+    const key = carriers.map((b) => b.id).sort().join();
+    if (lean.current.optOut && lean.current.optOut !== key) lean.current.optOut = "";
+    const close = carriers.some((b) => (b.radius ?? b.obstruction ?? 0) * c.ppm >= AUTO_LEAN_PX);
+    if (close && c.pitch < 0.01 && !lean.current.optOut) {
+      c.pitch = TILT_PITCH;
+      if (c.yaw === 0) c.yaw = TILT_YAW;
+      lean.current.auto = true;
+    } else if (!close && lean.current.auto) {
+      if (Math.abs(c.pitch - TILT_PITCH) < 1e-6) {
+        c.pitch = 0;
+        if (c.yaw === TILT_YAW) c.yaw = 0;
+      }
+      lean.current.auto = false;
+    }
   }, []);
 
   const draw = useCallback(() => {
@@ -452,6 +491,20 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
         rank: isPicked || body === hover.current ? -1 : mapRank(body.kind, body.weight),
         bold: isPicked,
       });
+      // Under a turning place's name, once its path shows: how high it sits and at what latitude.
+      const carrier = body.rides ? parents.get(body.rides) : undefined;
+      const perch = carrier?.spin ? perchOf(body, carrier) : undefined;
+      if (carrier && perch && Math.hypot(body.local?.[0] ?? 0, body.local?.[1] ?? 0) * c.ppm >= TURN_PATH_MIN_PX) {
+        const side = `${Math.abs(Math.round(perch.latitude))}° ${perch.latitude >= 0 ? "N" : "S"}`;
+        labels.push({
+          x: p[0] + Math.max(dot, Math.min(trueR, 40)) + 5,
+          y: p[1] + 17,
+          text: body.on ? `on the ground · ${side}` : `${formatDistance(perch.height)} up · ${side}`,
+          color: "#94a3b8",
+          rank: isPicked || body === hover.current ? -0.5 : mapRank(body.kind, body.weight) + 0.5,
+          bold: false,
+        });
+      }
     }
 
     // What passes in front of a body, drawn again over it.
@@ -678,9 +731,10 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       const span = Math.max(max[0] - min[0], max[1] - min[1], max[2] - min[2], minSpan, 1);
       camera.current.center = [(min[0] + max[0]) / 2, (min[1] + max[1]) / 2, (min[2] + max[2]) / 2];
       camera.current.ppm = (Math.min(size.current.w, size.current.h) * 0.78) / span;
+      autoLean();
       invalidate();
     },
-    [invalidate],
+    [invalidate, autoLean],
   );
 
   const fitSystem = useCallback(() => fit(scene.current.bodies.map((b) => b.pos)), [fit]);
@@ -696,6 +750,20 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
     if (leg) fit([leg.snare], leg.reach * 12);
   }, [fit]);
 
+  /** The bodies carrying picked turning places, as a key: what an asked-for top-down holds for. */
+  const leanKey = useCallback(() => {
+    const s = scene.current;
+    const byId = new Map(s.bodies.map((b) => [b.id, b]));
+    const ids = new Set<string>();
+    for (const leg of s.legs) {
+      for (const id of [leg.dest.id, ...leg.routes.map((r) => r.id)]) {
+        const place = byId.get(id);
+        if (place?.rides && place.local && byId.get(place.rides)?.spin) ids.add(place.rides);
+      }
+    }
+    return [...ids].sort().join();
+  }, []);
+
   useImperativeHandle(
     ref,
     () => ({
@@ -705,15 +773,18 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       topDown() {
         camera.current.yaw = 0;
         camera.current.pitch = 0;
+        // Asked for: do not lean again by itself until the picks change.
+        lean.current = { auto: false, optOut: leanKey() || "-" };
         invalidate();
       },
       tilt() {
         camera.current.pitch = TILT_PITCH;
         if (camera.current.yaw === 0) camera.current.yaw = TILT_YAW;
+        lean.current = { auto: false, optOut: "" };
         invalidate();
       },
     }),
-    [fitPlan, fitSystem, focusSnare, invalidate],
+    [fitPlan, fitSystem, focusSnare, invalidate, leanKey],
   );
 
   // Size the backing store to the element, at device resolution.
@@ -760,11 +831,12 @@ export function MapView({ ref, bodies, legs, activeLeg, dampen, others, focusLab
       c.ppm = Math.min(1, Math.max(1e-12, c.ppm * factor));
       const after = unprojectDelta(dx, dy);
       c.center = add(c.center, sub(before, after));
+      autoLean();
       invalidate();
     };
     canvas.addEventListener("wheel", onWheel, { passive: false });
     return () => canvas.removeEventListener("wheel", onWheel);
-  }, [invalidate, unprojectDelta]);
+  }, [invalidate, unprojectDelta, autoLean]);
 
   const nearest = (x: number, y: number): Body | undefined => {
     const picked = new Set<string>();

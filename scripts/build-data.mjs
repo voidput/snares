@@ -65,6 +65,8 @@ for (const location of positioned) {
     pos: [location.position.x, location.position.y, location.position.z].map((v) => Math.round(v)),
     arrival: q.arrivalRadius,
     obstruction: q.obstructionRadius,
+    // The body's own radius: where its surface is, for a height above it.
+    radius: location.type === "Planet" || location.type === "Moon" ? location.size : undefined,
     adoption: q.adoptionRadius,
     hidden: location.hiddenInStarmap || undefined,
     services: location.amenities?.length || undefined,

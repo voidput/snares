@@ -6,7 +6,7 @@ import { withMarkers } from "./markers";
 import { solvePlan } from "./plan";
 import { sanitizeState } from "./plans";
 import { decodeState, DEFAULT_STATE, encodeState } from "./share";
-import { carrierOf, holdWindow, lastStops, rotateZ, turned, turnFrom, turnIn, turnSpeed } from "./spin";
+import { carrierOf, holdWindow, lastStops, perchOf, rotateZ, turned, turnFrom, turnIn, turnSpeed } from "./spin";
 import type { Universe } from "./types";
 import { distance } from "./vec";
 
@@ -144,5 +144,24 @@ describe("turns in a link", () => {
   it("survives a saved plan", () => {
     expect(sanitizeState({ ...DEFAULT_STATE, turns: { Stanton4: 45, bad: "x" } }).turns).toEqual({ Stanton4: 45 });
     expect(sanitizeState({ ...DEFAULT_STATE, turns: "nope" }).turns).toEqual({});
+  });
+});
+
+describe("perchOf", () => {
+  it("says how high a low station sits and at what latitude", () => {
+    const perch = perchOf(named("Port Tressler"), named("microTech"))!;
+    expect(perch.latitude).toBeGreaterThan(40);
+    expect(perch.latitude).toBeLessThan(50);
+    // About 126 km over a 1,000 km planet.
+    expect(perch.height / 1000).toBeCloseTo(126, 0);
+    // Which is why its path, seen from over the pole, falls inside the planet's outline.
+    const local = named("Port Tressler").local!;
+    expect(Math.hypot(local[0], local[1])).toBeLessThan(named("microTech").radius!);
+  });
+
+  it("puts a city on the ground", () => {
+    const perch = perchOf(named("Lorville"), named("Hurston"))!;
+    expect(perch.height).toBe(0);
+    expect(Math.round(perch.latitude)).toBe(35);
   });
 });

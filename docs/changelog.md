@@ -14,6 +14,8 @@ Type: Added. Effort: L2.
 - Planets and moons are lit spheres once big enough on screen, with their equator when the view leans. The snare sphere is shaded the same way.
 - Depth is honoured: a route, a marker hop or a turn path passing behind a body is hidden by it and drawn over it where it passes in front; a place on the far side shows through faintly.
 - In a leaned view, orbital markers and low stations drop a line to their body's equator plane.
+- A turning place's label says how high it sits and at what latitude ("126 km up · 46° N"), since from over the pole its path falls inside the planet's outline and looks buried.
+- The view leans by itself once a planet carrying a picked turning place is big enough on screen, and stands back up when zoomed out. Top-down, once asked for, is kept until the picks change.
 - Still Canvas 2D, orthographic. No new dependency (`src/lib/view.ts` holds the geometry).
 
 ## 2026-11-14 — Places that turn with their planet
