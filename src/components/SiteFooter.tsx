@@ -1,5 +1,5 @@
 // The site footer, after RSI+'s: one slim always-visible row (Fankit mark, the "unofficial"
-// line, game build, Coffee, More) and a panel that unfolds upward with the full trademark
+// line, game build, Coffee, Patreon, More) and a panel that unfolds upward with the full trademark
 // notice and the referral code.
 //
 // Star Citizen Fankit compliance (docs/decisions/star-citizen-fankit-compliance.md).
@@ -8,12 +8,12 @@
 //   sits in the bar at 40px, full opacity, with no filter, shadow or other effect;
 // - a trademark notice of at least 10pt: the bar carries one line at 14px, and the
 //   full disclaimer is one click away in the panel, also at 14px.
-import { Check, ChevronDown, ChevronUp, Coffee, Copy, ExternalLink, ShieldCheck } from "lucide-react";
+import { Bug, Check, ChevronDown, ChevronUp, Coffee, Copy, ExternalLink, Heart, ShieldCheck } from "lucide-react";
 import { useEffect, useRef, useState } from "react";
 
 import { DISCLAIMER, MARK_ALT, MARK_SIZE, NOTICE_SIZE, SHORT_NOTICE } from "../brand/fankit";
 import brandMark from "../brand/MadeByTheCommunity_White.png";
-import { BUYMEACOFFEE_URL, enlistUrl, REFERRAL } from "../lib/support";
+import { APP_VERSION, BUYMEACOFFEE_URL, enlistUrl, ISSUES_URL, PATREON_URL, REFERRAL, REPO_URL } from "../lib/support";
 import { PrivacyPolicy, Terms } from "./Policies";
 
 type View = "about" | "privacy" | "terms";
@@ -85,6 +85,17 @@ export function SiteFooter({ build, extracted }: { build: string; extracted?: st
                   (build {build}) for planning only. No game code, art or audio is included. Free to use: no paid features, no
                   ads, no accounts, no tracking.
                 </p>
+                <p>
+                  Snares <span className="footer-version">{APP_VERSION}</span>. Found something wrong, or want it to do more?{" "}
+                  <a className="footer-inline" href={ISSUES_URL} target="_blank" rel="noopener noreferrer">
+                    Open an issue on GitHub <ExternalLink size={12} aria-hidden />
+                  </a>{" "}
+                  (needs a GitHub account). The{" "}
+                  <a className="footer-inline" href={REPO_URL} target="_blank" rel="noopener noreferrer">
+                    source <ExternalLink size={12} aria-hidden />
+                  </a>{" "}
+                  is there too.
+                </p>
               </div>
               <div className="footer-referral">
                 <span className="footer-label">Referral code</span>
@@ -118,12 +129,27 @@ export function SiteFooter({ build, extracted }: { build: string; extracted?: st
         <p className="footer-notice" style={{ fontSize: NOTICE_SIZE }}>
           {SHORT_NOTICE}
         </p>
-        <span className="footer-build" title={extracted ? `Game data extracted ${extracted.slice(0, 10)}` : undefined}>
+        <span
+          className="footer-build"
+          title={`Snares ${APP_VERSION}${extracted ? ` · game data extracted ${extracted.slice(0, 10)}` : ""}`}
+        >
           game build {build}
         </span>
         <span className="footer-actions">
           <a className="footer-action coffee" href={BUYMEACOFFEE_URL} target="_blank" rel="noopener noreferrer">
             <Coffee size={14} aria-hidden /> Coffee
+          </a>
+          <a className="footer-action patreon" href={PATREON_URL} target="_blank" rel="noopener noreferrer">
+            <Heart size={14} aria-hidden /> Patreon
+          </a>
+          <a
+            className="footer-action"
+            href={ISSUES_URL}
+            target="_blank"
+            rel="noopener noreferrer"
+            title="Report a problem or suggest something, on GitHub"
+          >
+            <Bug size={14} aria-hidden /> Report
           </a>
           <button
             className="footer-action"

@@ -1,10 +1,20 @@
 ---
 title: Changelog
 tags: [changelog]
-updated: 2026-11-14
+updated: 2026-11-15
 ---
 
 # Changelog
+
+## 2026-11-15 — Issue link, versions and a protected main
+
+Type: Added. Effort: L2.
+
+- Footer: **Patreon** link beside Coffee (StarOrg.tools page), same tip-link terms ([decision](decisions/star-citizen-fankit-compliance.md)).
+- Footer: **Report** opens the GitHub issue chooser (bug and idea forms); the About panel repeats it, links the source, and shows the Snares version and commit ([README](../README.md)).
+- Versions: semver through release-please. Conventional commits drive a release pull request that bumps `package.json` and writes `CHANGELOG.md`; merging it tags `vX.Y.Z` and publishes a GitHub Release. Baseline tag `v0.1.0`.
+- `main` is protected by a ruleset: no force-push, no deletion, pull request with a green `check` job, squash only. Org admins can bypass.
+- Workflows: `ci.yml` (typecheck, tests, build on pull requests), `release.yml`, `pr-title.yml`, `codeql.yml`; Dependabot weekly for npm and actions. Actions moved to current majors (Node 20 warnings gone). `pages.yml` now runs on `main` only.
 
 ## 2026-11-14 — A map with depth
 

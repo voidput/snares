@@ -45,7 +45,7 @@ export function PrivacyPolicy() {
 
       <h4>Links that leave the site</h4>
       <p>
-        Coffee opens Buy Me a Coffee and Enlist opens robertsspaceindustries.com, each in a new tab. Nothing is sent to
+        Coffee opens Buy Me a Coffee, Patreon opens patreon.com, and Enlist opens robertsspaceindustries.com, each in a new tab. Nothing is sent to
         them until you click, and what happens there falls under their policies.
       </p>
 

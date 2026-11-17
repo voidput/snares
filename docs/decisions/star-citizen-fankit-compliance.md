@@ -23,7 +23,7 @@ Snares is a public Star Citizen fan site built on data read from the game's file
 
 ## Tip link and referral code
 
-The page carries a Buy Me a Coffee link and an RSI referral code, as Bindscape and StarOrg.tools do. Recorded honestly, as there: the agreement allows no compensation *for access or use*. A voluntary tip that buys nothing is outside that wording but is the grey edge of "non-commercial", and CIG may see it differently. If asked, remove the tip link first. The referral code uses CIG's own programme.
+The page carries Buy Me a Coffee and Patreon links and an RSI referral code, as Bindscape and StarOrg.tools do. Recorded honestly, as there: the agreement allows no compensation *for access or use*. A voluntary tip that buys nothing is outside that wording but is the grey edge of "non-commercial", and CIG may see it differently. If asked, remove the tip links first. The referral code uses CIG's own programme.
 
 ## Consequences
 
