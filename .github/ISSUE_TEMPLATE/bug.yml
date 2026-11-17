@@ -1,0 +1,28 @@
+name: Something is wrong
+description: A wrong position, a wrong number, or the page misbehaving.
+labels: [bug]
+body:
+  - type: textarea
+    id: what
+    attributes:
+      label: What happened
+      description: What you did, what you saw, and what you expected instead.
+    validations:
+      required: true
+  - type: input
+    id: plan
+    attributes:
+      label: Plan link
+      description: Copy the page address with the plan open. The whole plan is in the link.
+      placeholder: https://snare.starorg.tools/#...
+  - type: input
+    id: version
+    attributes:
+      label: Version
+      description: Shown in the footer under More, with the game build.
+      placeholder: v0.2.0 · game build 4.x
+  - type: input
+    id: browser
+    attributes:
+      label: Browser and device
+      placeholder: Firefox on Windows, Chrome on Android...

@@ -1080,6 +1080,11 @@ button.footer-action:hover:not(:disabled) {
 .footer-action.coffee:hover {
   color: var(--warn);
 }
+/* Patreon keeps its own brand coral. */
+.footer-action.patreon svg,
+.footer-action.patreon:hover {
+  color: #ff424d;
+}
 .footer-more {
   position: absolute;
   left: 0;
@@ -1196,6 +1201,22 @@ button.icon {
   border-radius: var(--radius);
   color: var(--text);
   text-decoration: none;
+}
+.footer-inline {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  color: var(--text);
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+.footer-inline:hover {
+  color: var(--accent);
+}
+.footer-version {
+  font-family: var(--mono);
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
 }
 .footer-link:hover {
   border-color: var(--accent);

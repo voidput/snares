@@ -1,0 +1,16 @@
+name: Idea
+description: Something Snares should do, or do better.
+labels: [enhancement]
+body:
+  - type: textarea
+    id: idea
+    attributes:
+      label: The idea
+      description: What you want to do in the game that the planner does not help with yet.
+    validations:
+      required: true
+  - type: textarea
+    id: checked
+    attributes:
+      label: Seen in the game
+      description: If this rests on how the game behaves, say what you saw and in which build.

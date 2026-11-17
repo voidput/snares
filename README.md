@@ -77,6 +77,15 @@ sc-gamedata output directory.
 One-time setup in the GitHub repo: Settings → Pages → Source: **GitHub Actions**.
 The build uses relative asset paths, so it works under any repo name.
 
+## Contributing and releases
+
+- Bugs and ideas: [open an issue](https://github.com/voidput/snares/issues/new/choose). The site footer links there too.
+- `main` is protected: changes land by pull request, squashed, once the `check` job (typecheck, tests, build) is green. Org admins can bypass.
+- Pull request titles are conventional commits (`feat: ...`, `fix: ...`, `docs: ...`); the title becomes the commit.
+- Versions follow semver and are cut by [release-please](https://github.com/googleapis/release-please): it keeps a release pull request open that bumps `package.json` and writes `CHANGELOG.md` from the commits (`fix` → patch, `feat` → minor, `!` → breaking; before 1.0 a breaking change bumps the minor). Merging it tags `vX.Y.Z` and publishes a GitHub Release. The footer shows the version and commit the page was built from.
+- `docs/changelog.md` stays the hand-written record of what changed for users; `CHANGELOG.md` is generated.
+- Other workflows: `ci.yml` (pull requests), `pr-title.yml`, `codeql.yml`, and Dependabot for npm and actions, weekly.
+
 ## How the position is found
 
 Ships in quantum fly a straight line to the centre of their destination, so
