@@ -2,7 +2,7 @@ name: Discord
 
 on:
   push:
-    branches: [main, dev]
+    branches: [main]
   # Pages deploy result for main.
   workflow_run:
     workflows: ["Deploy to GitHub Pages"]
@@ -19,7 +19,7 @@ jobs:
     steps:
       - name: Post push to Discord
         env:
-          WEBHOOK: ${{ github.ref_name == 'main' && secrets.DISCORD_WEBHOOK_MAIN || secrets.DISCORD_WEBHOOK_DEV }}
+          WEBHOOK: ${{ secrets.DISCORD_PROJECTS_WEBHOOK }}
           BRANCH: ${{ github.ref_name }}
           REPO: ${{ github.repository }}
           SERVER: ${{ github.server_url }}
@@ -30,10 +30,10 @@ jobs:
           COUNT: ${{ length(github.event.commits) }}
         run: |
           if [ -z "$WEBHOOK" ]; then
-            echo "::notice::No Discord webhook secret set for $BRANCH; skipping."
+            echo "::notice::No DISCORD_PROJECTS_WEBHOOK secret set; skipping."
             exit 0
           fi
-          if [ "$BRANCH" = main ]; then color=3066993; else color=3447003; fi
+          color=3066993
           jq -n \
             --arg title "[$REPO:$BRANCH] $COUNT commit(s)" \
             --arg desc "$(printf '%s' "$MESSAGE" | head -n1)" \
@@ -51,7 +51,7 @@ jobs:
     steps:
       - name: Post deploy result to Discord
         env:
-          WEBHOOK: ${{ secrets.DISCORD_WEBHOOK_MAIN }}
+          WEBHOOK: ${{ secrets.DISCORD_PROJECTS_WEBHOOK }}
           REPO: ${{ github.repository }}
           CONCLUSION: ${{ github.event.workflow_run.conclusion }}
           SHA: ${{ github.event.workflow_run.head_sha }}
@@ -61,7 +61,7 @@ jobs:
           SERVER: ${{ github.server_url }}
         run: |
           if [ -z "$WEBHOOK" ]; then
-            echo "::notice::No DISCORD_WEBHOOK_MAIN secret set; skipping."
+            echo "::notice::No DISCORD_PROJECTS_WEBHOOK secret set; skipping."
             exit 0
           fi
           case "$CONCLUSION" in
