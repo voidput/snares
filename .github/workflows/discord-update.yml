@@ -1,0 +1,49 @@
+# Discord update notice: after each successful site deploy, post the change to the Star Org Labs
+# #📦project-updates channel (secret DISCORD_PROJECTS_WEBHOOK; shared by MCsim, Bindscape and Snares).
+# Run it by hand to (re)post the latest commit on main.
+name: Discord update notice
+
+on:
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  notify:
+    if: github.event_name == 'workflow_dispatch' || github.event.workflow_run.conclusion == 'success'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Post the deploy to Discord
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          APP: "Snares"
+          SITE: "https://snare.starorg.tools/"
+          HOOK: ${{ secrets.DISCORD_PROJECTS_WEBHOOK }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          MSG: ${{ github.event.workflow_run.head_commit.message }}
+          WHEN: ${{ github.event.workflow_run.updated_at }}
+        run: |
+          set -euo pipefail
+          if [ -z "${HOOK:-}" ]; then echo "::notice::DISCORD_PROJECTS_WEBHOOK not set; skipping"; exit 0; fi
+          if [ -z "${SHA:-}" ]; then
+            c=$(gh api "repos/$REPO/commits/main")
+            SHA=$(jq -r .sha <<<"$c"); MSG=$(jq -r .commit.message <<<"$c"); WHEN=$(jq -r .commit.committer.date <<<"$c")
+          fi
+          payload=$(jq -nc --arg app "$APP" --arg site "$SITE" --arg sha "$SHA" --arg msg "$MSG" --arg when "$WHEN" --arg repo "$REPO" '{
+              allowed_mentions: {parse: []},
+              embeds: [{
+                title: ($app + " updated"),
+                url: $site,
+                description: (($msg | split("\n") | map(select(length > 0)) | .[0:6] | join("\n") | .[0:1500])
+                  + "\n\n[" + $sha[0:7] + "](https://github.com/" + $repo + "/commit/" + $sha + ") · " + $site),
+                color: 3447003,
+                footer: {text: "main · site deploy"},
+                timestamp: $when }] }')
+          curl -fsS -X POST -H 'Content-Type: application/json' -d "$payload" "$HOOK"
+          echo "Posted $APP $SHA"
