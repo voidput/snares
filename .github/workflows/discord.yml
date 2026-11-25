@@ -1,0 +1,78 @@
+name: Discord
+
+on:
+  push:
+    branches: [main]
+  # Pages deploy result for main.
+  workflow_run:
+    workflows: ["Deploy to GitHub Pages"]
+    types: [completed]
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  push:
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post push to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_PROJECTS_WEBHOOK }}
+          BRANCH: ${{ github.ref_name }}
+          REPO: ${{ github.repository }}
+          SERVER: ${{ github.server_url }}
+          SHA: ${{ github.sha }}
+          MESSAGE: ${{ github.event.head_commit.message }}
+          COMPARE: ${{ github.event.compare }}
+          COMMITS: ${{ toJSON(github.event.commits.*.id) }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::notice::No DISCORD_PROJECTS_WEBHOOK secret set; skipping."
+            exit 0
+          fi
+          color=3066993
+          count=$(printf '%s' "$COMMITS" | jq 'length')
+          jq -n \
+            --arg title "[$REPO:$BRANCH] $count commit(s)" \
+            --arg desc "$(printf '%s' "$MESSAGE" | head -n1)" \
+            --arg url "$COMPARE" \
+            --arg sha "${SHA:0:7}" \
+            --arg shaurl "$SERVER/$REPO/commit/$SHA" \
+            --argjson color "$color" \
+            '{embeds:[{title:$title, description:("[`"+$sha+"`]("+$shaurl+") "+$desc), url:$url, color:$color}]}' \
+          | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"
+
+  deploy:
+    if: github.event_name == 'workflow_run'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Post deploy result to Discord
+        env:
+          WEBHOOK: ${{ secrets.DISCORD_PROJECTS_WEBHOOK }}
+          REPO: ${{ github.repository }}
+          CONCLUSION: ${{ github.event.workflow_run.conclusion }}
+          SHA: ${{ github.event.workflow_run.head_sha }}
+          RUN_URL: ${{ github.event.workflow_run.html_url }}
+          MESSAGE: ${{ github.event.workflow_run.head_commit.message }}
+          SERVER: ${{ github.server_url }}
+        run: |
+          if [ -z "$WEBHOOK" ]; then
+            echo "::notice::No DISCORD_PROJECTS_WEBHOOK secret set; skipping."
+            exit 0
+          fi
+          case "$CONCLUSION" in
+            success) color=3066993; label="Deploy succeeded" ;;
+            cancelled|skipped) echo "::notice::Deploy $CONCLUSION; skipping."; exit 0 ;;
+            *) color=15158332; label="Deploy FAILED" ;;
+          esac
+          jq -n \
+            --arg title "[$REPO] $label" \
+            --arg desc "$(printf '%s' "$MESSAGE" | head -n1)" \
+            --arg url "$RUN_URL" \
+            --arg sha "${SHA:0:7}" \
+            --arg shaurl "$SERVER/$REPO/commit/$SHA" \
+            --argjson color "$color" \
+            '{embeds:[{title:$title, description:("[`"+$sha+"`]("+$shaurl+") "+$desc), url:$url, color:$color}]}' \
+          | curl -fsS -H 'Content-Type: application/json' -d @- "$WEBHOOK"
