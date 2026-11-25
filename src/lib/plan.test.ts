@@ -438,6 +438,7 @@ describe("share links", () => {
   it("round-trips a plan", () => {
     const state = {
       ...DEFAULT_STATE,
+      channel: "ptu" as const,
       originIds: ["Stanton1", "Stanton2"],
       destIds: ["Stanton3_L1", "Stanton3"],
       spread: 50000 as const,
@@ -460,6 +461,12 @@ describe("share links", () => {
   it("survives garbage", () => {
     expect(decodeState("#p=abc&r=-4&sp=wat&l=x")).toEqual(DEFAULT_STATE);
     expect(decodeState("")).toEqual(DEFAULT_STATE);
+    expect(decodeState("ch=wat").channel).toBe("live");
+  });
+
+  it("leaves a live link without a channel", () => {
+    expect(encodeState(DEFAULT_STATE)).not.toContain("ch=");
+    expect(encodeState({ ...DEFAULT_STATE, channel: "ptu" })).toContain("ch=ptu");
   });
 });
 

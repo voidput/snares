@@ -48,6 +48,7 @@ export function sanitizeState(raw: unknown): PlanState {
     }
   }
   const candidate: PlanState = {
+    channel: r.channel === "ptu" ? "ptu" : "live",
     system: str(r.system) ?? DEFAULT_STATE.system,
     originIds: strings(r.originIds),
     destIds: strings(r.destIds),

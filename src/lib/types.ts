@@ -106,6 +106,8 @@ export interface QuantumDrive {
 }
 
 export interface Universe {
+  /** "live" or "ptu"; absent in data baked before channels. */
+  channel?: string;
   build: string;
   extracted: string;
   rules: Record<string, number>;

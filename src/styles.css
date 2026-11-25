@@ -195,6 +195,10 @@ header {
   border-color: rgba(var(--accent-rgb), 0.45);
   box-shadow: var(--glow-sm);
 }
+.systems.channel {
+  padding-left: 10px;
+  border-left: 1px solid var(--line, rgba(255, 255, 255, 0.12));
+}
 .header-right {
   margin-left: auto;
   display: flex;
