@@ -36,7 +36,6 @@ jobs:
             SHA=$(jq -r .sha <<<"$c"); MSG=$(jq -r .commit.message <<<"$c"); WHEN=$(jq -r .commit.committer.date <<<"$c")
           fi
           payload=$(jq -nc --arg app "$APP" --arg site "$SITE" --arg sha "$SHA" --arg msg "$MSG" --arg when "$WHEN" --arg repo "$REPO" '{
-              username: ($app + " updates"),
               allowed_mentions: {parse: []},
               embeds: [{
                 title: ($app + " updated"),
