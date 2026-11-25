@@ -175,9 +175,11 @@ export function App() {
 
   useEffect(() => {
     const controller = new AbortController();
-    fetch(`${import.meta.env.BASE_URL}data/universe.json`, { signal: controller.signal })
+    const file = state.channel === "ptu" ? "universe-ptu.json" : "universe.json";
+    setError(undefined);
+    fetch(`${import.meta.env.BASE_URL}data/${file}`, { signal: controller.signal })
       .then((res) => {
-        if (!res.ok) throw new Error(`universe.json: HTTP ${res.status}`);
+        if (!res.ok) throw new Error(`${file}: HTTP ${res.status}`);
         return res.json();
       })
       .then((data: Universe) => setUniverse(data))
@@ -185,7 +187,7 @@ export function App() {
         if (err.name !== "AbortError") setError(err.message);
       });
     return () => controller.abort();
-  }, []);
+  }, [state.channel]);
 
   // The link is the plan: keep the address bar current without adding history.
   const encoded = encodeState(state);
@@ -446,7 +448,7 @@ export function App() {
       return;
     }
     clearWork();
-    setState({ ...DEFAULT_STATE, system: system?.name ?? DEFAULT_STATE.system });
+    setState({ ...DEFAULT_STATE, channel: state.channel, system: system?.name ?? DEFAULT_STATE.system });
     setPlanName("");
     map.current?.fitSystem();
   };
@@ -1634,6 +1636,23 @@ export function App() {
                 {s.name}
               </button>
             ))}
+        </nav>
+        <nav className="systems channel" aria-label="Game build">
+          {(["live", "ptu"] as const).map((ch) => (
+            <button
+              key={ch}
+              className={ch === state.channel ? "on" : undefined}
+              title={ch === "ptu" ? `Public test universe data${state.channel === "ptu" ? ` (${universe.build})` : ""}` : "Live servers data"}
+              onClick={() => {
+                if (ch === state.channel) return;
+                setStartId(undefined);
+                setMenu(undefined);
+                update({ channel: ch });
+              }}
+            >
+              {ch.toUpperCase()}
+            </button>
+          ))}
         </nav>
         <div className="header-right">
           <button className="ghost" onClick={() => copy("link", window.location.href)}>

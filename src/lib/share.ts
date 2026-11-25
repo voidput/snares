@@ -2,7 +2,11 @@ import type { Mode, SpreadMode, Weights } from "./plan";
 import type { Turns } from "./spin";
 
 /** Everything that defines a plan, and so everything a shared link carries. */
+export type Channel = "live" | "ptu";
+
 export interface PlanState {
+  /** Which game build the data is from: the live servers or the public test universe. */
+  channel: Channel;
   system: string;
   originIds: string[];
   destIds: string[];
@@ -44,6 +48,7 @@ const ROLE_CODE: Record<FleetRole, string> = { split: "s", hold: "h", backstop: 
 const CODE_ROLE: Record<string, FleetRole> = { s: "split", h: "hold", b: "backstop" };
 
 export const DEFAULT_STATE: PlanState = {
+  channel: "live",
   system: "Stanton",
   originIds: [],
   destIds: [],
@@ -65,6 +70,7 @@ export const DEFAULT_STATE: PlanState = {
 
 export function encodeState(state: PlanState): string {
   const p = new URLSearchParams();
+  if (state.channel !== DEFAULT_STATE.channel) p.set("ch", state.channel);
   p.set("s", state.system);
   if (state.originIds.length) p.set("o", state.originIds.join(","));
   if (state.destIds.length) p.set("d", state.destIds.join(","));
@@ -108,6 +114,7 @@ export function decodeState(query: string): PlanState {
   const placement = Number(p.get("p"));
 
   return {
+    channel: p.get("ch") === "ptu" ? "ptu" : "live",
     system: p.get("s") || DEFAULT_STATE.system,
     originIds: list(p.get("o")),
     destIds: list(p.get("d")).slice(0, 3),

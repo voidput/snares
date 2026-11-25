@@ -1,10 +1,19 @@
 ---
 title: Changelog
 tags: [changelog]
-updated: 2026-11-15
+updated: 2026-11-24
 ---
 
 # Changelog
+
+## 2026-11-24 — Levski, and PTU data
+
+Type: Added, Fixed. Effort: L2.
+
+- Levski is on the Nyx map. It sits in `glaciemring_segment_levski`, a ring segment container that is no star map location itself; sc-gamedata (`socpak.ts: systemLevelPlacements`) now follows such plain containers at the system level. Delamar still has no placement in the game files.
+- **LIVE / PTU** toggle in the header. PTU loads `public/data/universe-ptu.json`, baked by `npm run data:ptu` from sc-gamedata's `data-ptu/`; the link carries `ch=ptu`, saved plans keep their channel.
+- From 5.0 builds, Nyx I and Levski weigh 10 (hot), like a city planet.
+- Data: LIVE 4.10.201.48085, PTU 5.0.202.35026 (Nyx II and III unplaced there).
 
 ## 2026-11-15 — Issue link, versions and a protected main
 

@@ -6,16 +6,27 @@
  * game-quantum). Nothing here reads the game: run `make all` in sc-gamedata
  * first. The baked file is committed, so the site builds without game files.
  *
- *   node scripts/build-data.mjs [--data ../sc-gamedata/data]
+ *   node scripts/build-data.mjs [--channel ptu] [--data ../sc-gamedata/data]
+ *
+ * `--channel ptu` reads sc-gamedata's `data-ptu/` (from `make ptu
+ * EXTRACT_DIR=./extracted-data-ptu OUT=./data-ptu`) and writes
+ * universe-ptu.json, which the site loads when the PTU button is on.
  */
 import fs from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 
 const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const flag = process.argv.indexOf("--data");
+const arg = (name) => {
+  const at = process.argv.indexOf(name);
+  return at >= 0 ? process.argv[at + 1] : undefined;
+};
+const channel = (arg("--channel") ?? "live").toLowerCase();
+if (channel !== "live" && channel !== "ptu") throw new Error(`--channel is live or ptu, not ${channel}`);
 const dataDir = path.resolve(
-  flag >= 0 ? process.argv[flag + 1] : (process.env.SC_GAMEDATA_DIR ?? path.join(root, "..", "sc-gamedata", "data")),
+  arg("--data") ??
+    (channel === "ptu" ? process.env.SC_GAMEDATA_PTU_DIR : process.env.SC_GAMEDATA_DIR) ??
+    path.join(root, "..", "sc-gamedata", channel === "ptu" ? "data-ptu" : "data"),
 );
 
 const read = (name) => JSON.parse(fs.readFileSync(path.join(dataDir, `${name}.json`), "utf-8"));
@@ -191,6 +202,14 @@ function isDeadEnd(body, system, systemNames) {
   return !systemNames.some((name) => name !== system && new RegExp(`\\b${name}\\b`, "i").test(body.name));
 }
 
+/**
+ * From 5.0 Nyx is a destination of its own: Nyx I and Levski draw traffic like
+ * a city planet. Matched by name so a renamed record id still lands.
+ */
+const major = Number(String(starmap._build ?? "").split(".")[0]);
+const HOT_FROM_5 = [/^Nyx I$/i, /^Levski$/i];
+const hotByBuild = (body) => major >= 5 && HOT_FROM_5.some((re) => re.test(body.name));
+
 const systemNames = [...systems.keys()];
 for (const [system, bodies] of systems) {
   const cityPlanets = new Set(bodies.filter((b) => b.kind === "city").map((b) => b.on));
@@ -199,7 +218,7 @@ for (const [system, bodies] of systems) {
     const deadEnd = isDeadEnd(body, system, systemNames);
     if (deadEnd) body.deadEnd = true;
     // A surface location weighs what its body does: it is the same route.
-    body.weight = weightOf(body, cityPlanets.has(body.id), deadEnd);
+    body.weight = hotByBuild(body) ? 10 : weightOf(body, cityPlanets.has(body.id), deadEnd);
   }
   const byId = new Map(bodies.map((b) => [b.id, b]));
   for (const body of bodies) if (body.on) body.weight = byId.get(body.on)?.weight ?? 1;
@@ -207,6 +226,7 @@ for (const [system, bodies] of systems) {
 
 const order = ["star", "planet", "city", "moon", "lagrange", "station", "jump", "asteroid", "surface", "other"];
 const out = {
+  channel,
   build: starmap._build,
   extracted: starmap._extracted,
   rules: quantum.rules,
@@ -235,7 +255,7 @@ const out = {
     .sort((a, b) => a.size - b.size || a.name.localeCompare(b.name)),
 };
 
-const file = path.join(root, "public", "data", "universe.json");
+const file = path.join(root, "public", "data", channel === "ptu" ? "universe-ptu.json" : "universe.json");
 fs.mkdirSync(path.dirname(file), { recursive: true });
 fs.writeFileSync(file, JSON.stringify(out));
 

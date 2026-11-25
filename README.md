@@ -101,8 +101,10 @@ near limit is the destination's arrival radius plus the snare radius. See
 - Timing uses a drive's mean acceleration, not the game's two-stage curve.
 - Surface locations have no position (they turn with their planet); use the
   planet with the Auto spread.
-- A few locations nested two containers deep are not placed yet (Delamar and
-  Levski in Nyx, some Pyro stations).
+- Delamar (Nyx) has no placement in the game's containers, so it is not on the
+  map; Levski, which it holds, is.
+- PTU data (the PTU button, `npm run data:ptu`) is whatever the last PTU
+  extract held; in 5.0.202 Nyx II and III are not placed.
 - The `/showlocation` format is parsed leniently (labelled x/y/z, or any three
   numbers); it assumes metres in the system frame.
 
