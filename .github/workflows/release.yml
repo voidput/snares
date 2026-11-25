@@ -25,5 +25,15 @@ jobs:
       - if: steps.release.outputs.prs_created == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
-          BRANCH: ${{ fromJSON(steps.release.outputs.pr).headBranchName }}
-        run: gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$BRANCH"
+          # `pr` can come back empty when a release PR is only updated; `prs` holds them all.
+          PR: ${{ steps.release.outputs.pr }}
+          PRS: ${{ steps.release.outputs.prs }}
+        run: |
+          branches=$( { printf '%s' "$PRS" | jq -r '.[]?.headBranchName // empty'; printf '%s' "$PR" | jq -r '.headBranchName // empty'; } 2>/dev/null | sort -u)
+          if [ -z "$branches" ]; then
+            echo "::notice::release-please reported a PR but no branch; nothing to check."
+            exit 0
+          fi
+          for branch in $branches; do
+            gh workflow run ci.yml --repo "$GITHUB_REPOSITORY" --ref "$branch"
+          done
