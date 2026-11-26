@@ -1,45 +1,71 @@
 name: Deploy to GitHub Pages
 
+# Every deploy bakes public/data from the newest sc-gamedata-dumps releases (LIVE: latest
+# release, PTU: newest prerelease), so the site never waits on a data commit.
 on:
   push:
     branches: [main]
   workflow_dispatch:
-  # Called by data-sync.yml after it pushes baked data: a GITHUB_TOKEN push starts no workflow.
+  # data-sync.yml calls this daily and when sc-gamedata publishes a build.
   workflow_call:
     inputs:
-      ref:
-        description: Commit to build (the one data-sync just pushed)
+      tag:
+        description: Pin one channel to this dumps tag (otherwise the newest release)
         type: string
         required: false
+      channel:
+        description: Channel the tag is for (LIVE or PTU)
+        type: string
+        required: false
+      skip-unchanged:
+        description: Skip the deploy when the site already serves the same tags and revisions
+        type: boolean
+        default: false
 
 permissions:
   contents: read
 
 concurrency:
   group: pages
-  cancel-in-progress: true
+  cancel-in-progress: false
 
 jobs:
   build:
     runs-on: ubuntu-latest
+    outputs:
+      skip: ${{ steps.bake.outputs.skip }}
     steps:
       - uses: actions/checkout@v7
-        with:
-          # When called, github.sha is the commit before data-sync's push.
-          ref: ${{ inputs.ref || github.sha }}
       - uses: actions/setup-node@v7
         with:
           node-version: 24
           cache: npm
-      - run: npm ci
-      - run: npm test
-      - run: npm run build
-      - uses: actions/upload-pages-artifact@v5
+      - id: bake
+        name: Bake game data
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ inputs.tag }}
+          CHANNEL: ${{ inputs.channel }}
+          SITE: ${{ inputs.skip-unchanged && 'https://snare.starorg.tools/' || '' }}
+        run: |
+          args=()
+          [ -n "$TAG" ] && args+=(--tag "$TAG" --channel "$CHANNEL")
+          [ -n "$SITE" ] && args+=(--skip-unchanged "$SITE")
+          scripts/bake-dumps.sh "${args[@]}"
+      - if: steps.bake.outputs.skip != 'true'
+        run: npm ci
+      - if: steps.bake.outputs.skip != 'true'
+        run: npm test
+      - if: steps.bake.outputs.skip != 'true'
+        run: npm run build
+      - if: steps.bake.outputs.skip != 'true'
+        uses: actions/upload-pages-artifact@v5
         with:
           path: dist
 
   deploy:
     needs: build
+    if: needs.build.outputs.skip != 'true'
     runs-on: ubuntu-latest
     permissions:
       pages: write
