@@ -1,18 +1,19 @@
 name: Data sync
 
-# sc-gamedata-dumps sends `gamedata-published` when a game build is published.
-# Bake that build's data into public/data, merge it to main through a PR, then deploy Pages.
+# snares commits no game data: each Pages deploy bakes it from sc-gamedata-dumps.
+# This redeploys daily (skipped when the site already serves the newest tags and
+# revisions) and at once when sc-gamedata's `make publish` dispatches it.
 on:
-  repository_dispatch:
-    types: [gamedata-published]
+  schedule:
+    - cron: "23 6 * * *"
   workflow_dispatch:
     inputs:
       tag:
-        description: sc-gamedata-dumps tag (the build string, e.g. 4.10.201.48085)
+        description: sc-gamedata-dumps tag to pin (blank = newest release per channel)
         type: string
-        required: true
+        required: false
       channel:
-        description: Game channel
+        description: Channel of that tag
         type: choice
         options: [LIVE, PTU]
         default: LIVE
@@ -20,151 +21,14 @@ on:
 permissions:
   contents: read
 
-concurrency:
-  group: data-sync
-  cancel-in-progress: false
-
 jobs:
-  sync:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: write
-      pull-requests: write
-      actions: write
-    outputs:
-      changed: ${{ steps.commit.outputs.changed }}
-      sha: ${{ steps.commit.outputs.sha }}
-    env:
-      TAG: ${{ github.event.client_payload.tag || inputs.tag }}
-      BUILD: ${{ github.event.client_payload.build || github.event.client_payload.tag || inputs.tag }}
-      CHANNEL: ${{ github.event.client_payload.channel || inputs.channel }}
-      DEFAULT_BRANCH: ${{ github.event.repository.default_branch }}
-    steps:
-      - id: check
-        name: Check payload
-        run: |
-          case "$TAG" in
-            ""|*[!0-9A-Za-z._-]*) echo "::error::Bad tag '$TAG'"; exit 1 ;;
-          esac
-          case "$BUILD" in
-            *[!0-9A-Za-z._-]*) echo "::error::Bad build '$BUILD'"; exit 1 ;;
-          esac
-          case "$CHANNEL" in
-            LIVE) ch=live; out=universe.json ;;
-            PTU) ch=ptu; out=universe-ptu.json ;;
-            *) echo "::notice::Channel '$CHANNEL' is not baked by snares; skipping."; echo "skip=true" >> "$GITHUB_OUTPUT"; exit 0 ;;
-          esac
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-          echo "ch=$ch" >> "$GITHUB_OUTPUT"
-          echo "file=public/data/$out" >> "$GITHUB_OUTPUT"
-
-      - if: steps.check.outputs.skip == 'false'
-        uses: actions/checkout@v7
-        with:
-          ref: ${{ github.event.repository.default_branch }}
-
-      - if: steps.check.outputs.skip == 'false'
-        uses: actions/setup-node@v7
-        with:
-          node-version: 24
-
-      - id: fetch
-        if: steps.check.outputs.skip == 'false'
-        name: Fetch dumps data
-        env:
-          FILE: ${{ steps.check.outputs.file }}
-        run: |
-          git clone --depth 1 --branch "$TAG" --filter=blob:none --sparse https://github.com/voidput/sc-gamedata-dumps "$RUNNER_TEMP/dumps"
-          git -C "$RUNNER_TEMP/dumps" sparse-checkout set data
-          # Cone mode keeps root files: build.json (newer tags) names the tag's channel, so a
-          # manual run with the wrong channel cannot bake PTU data into the LIVE file.
-          manifest="$RUNNER_TEMP/dumps/build.json"
-          if [ -f "$manifest" ]; then
-            tagged=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8")).channel ?? "")' "$manifest")
-            if [ -n "$tagged" ] && [ "$tagged" != "$CHANNEL" ]; then
-              echo "::error::$TAG is a $tagged build, not $CHANNEL."
-              exit 1
-            fi
-          fi
-          for name in game-starmap game-ship-components game-quantum game-ships; do
-            if [ ! -f "$RUNNER_TEMP/dumps/data/$name.json" ]; then
-              echo "::notice::$TAG has no data/$name.json; skipping."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          done
-          # No regress: keep a newer committed build (out-of-order dispatch, old-tag backfill).
-          if [ -f "$FILE" ]; then
-            have=$(node -e 'console.log(JSON.parse(require("fs").readFileSync(process.argv[1], "utf-8")).build ?? "")' "$FILE")
-            if [ -n "$have" ] && node -e '
-              const parts = (v) => v.split(/[^0-9]+/).filter(Boolean).map(Number);
-              const [a, b] = [parts(process.argv[1]), parts(process.argv[2])];
-              for (let i = 0; i < Math.max(a.length, b.length); i++) {
-                const d = (a[i] ?? 0) - (b[i] ?? 0);
-                if (d) process.exit(d > 0 ? 0 : 1);
-              }
-              process.exit(1);
-            ' "$have" "$BUILD"; then
-              echo "::notice::$FILE has build $have, newer than $BUILD; skipping."
-              echo "skip=true" >> "$GITHUB_OUTPUT"
-              exit 0
-            fi
-          fi
-          echo "skip=false" >> "$GITHUB_OUTPUT"
-
-      - if: steps.check.outputs.skip == 'false' && steps.fetch.outputs.skip == 'false'
-        name: Bake
-        env:
-          CH: ${{ steps.check.outputs.ch }}
-        run: node scripts/build-data.mjs --channel "$CH" --data "$RUNNER_TEMP/dumps/data"
-
-      # main takes changes only through a squash-merged pull request with a green `check`,
-      # so the bake lands as a PR the workflow merges itself once CI passes.
-      - id: commit
-        if: steps.check.outputs.skip == 'false' && steps.fetch.outputs.skip == 'false'
-        name: Open, check and merge a data PR
-        env:
-          FILE: ${{ steps.check.outputs.file }}
-          GH_TOKEN: ${{ github.token }}
-        run: |
-          if git diff --quiet -- "$FILE"; then
-            echo "::notice::$FILE unchanged for $CHANNEL $BUILD."
-            echo "changed=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-          title="chore(data): $CHANNEL $BUILD"
-          branch="data/${CHANNEL,,}-$BUILD"
-          git config user.name "github-actions[bot]"
-          git config user.email "41898283+github-actions[bot]@users.noreply.github.com"
-          git switch -c "$branch"
-          git add -- "$FILE"
-          git commit -m "$title"
-          git push --force-with-lease origin "$branch"
-          pr=$(gh pr list --head "$branch" --state open --json number -q '.[0].number')
-          if [ -z "$pr" ]; then
-            gh pr create --base "$DEFAULT_BRANCH" --head "$branch" --title "$title" \
-              --body "Baked from sc-gamedata-dumps tag \`$TAG\` ($CHANNEL) by the data-sync workflow."
-            pr=$(gh pr list --head "$branch" --state open --json number -q '.[0].number')
-          fi
-          # A pull request opened with the workflow token starts no checks; ask for CI.
-          gh workflow run ci.yml --ref "$branch"
-          for _ in $(seq 30); do
-            gh pr checks "$pr" --required >/dev/null 2>&1 && break
-            [ "$(gh pr checks "$pr" --required --json name -q length 2>/dev/null)" -gt 0 ] 2>/dev/null && break
-            sleep 10
-          done
-          gh pr checks "$pr" --required --watch --interval 15
-          gh pr merge "$pr" --squash --delete-branch --subject "$title"
-          echo "changed=true" >> "$GITHUB_OUTPUT"
-          echo "sha=$(gh pr view "$pr" --json mergeCommit -q .mergeCommit.oid)" >> "$GITHUB_OUTPUT"
-
   deploy:
-    needs: sync
-    if: needs.sync.outputs.changed == 'true'
     permissions:
       contents: read
       pages: write
       id-token: write
     uses: ./.github/workflows/pages.yml
     with:
-      ref: ${{ needs.sync.outputs.sha }}
+      tag: ${{ inputs.tag }}
+      channel: ${{ inputs.channel }}
+      skip-unchanged: ${{ github.event_name == 'schedule' }}

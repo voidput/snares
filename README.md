@@ -59,7 +59,19 @@ npm test           # solver, planner, kinematics, links, baked data
 npm run build      # typecheck + static site in dist/
 ```
 
-## Refresh the game data after a patch
+## Game data
+
+The site's data comes from [sc-gamedata-dumps](https://github.com/voidput/sc-gamedata-dumps)
+and is baked at deploy time, not committed. `scripts/bake-dumps.sh` takes the newest LIVE
+release and the newest PTU prerelease, runs `scripts/build-data.mjs` on each and writes
+`public/data/source.json` (the tags and revisions baked).
+
+`.github/workflows/data-sync.yml` redeploys daily, skipping when the site already serves
+those tags and revisions. sc-gamedata's `make publish` also dispatches it, for an immediate
+rebuild. A manual run can pin one channel to a tag.
+
+The committed `public/data/universe*.json` are only a fallback for `npm run dev`. To bake a
+local sc-gamedata build instead:
 
 ```bash
 (cd ../sc-gamedata && make all)   # extract + parse from the installed game
@@ -67,13 +79,13 @@ npm run data                      # bake public/data/universe.json
 npm test
 ```
 
-`public/data/universe.json` is committed, so CI and Pages need no game files.
-`npm run data -- --data <dir>` or `SC_GAMEDATA_DIR` points at another
-sc-gamedata output directory.
+`npm run data -- --data <dir>` or `SC_GAMEDATA_DIR` points at another sc-gamedata output
+directory.
 
 ## Deploy
 
-`.github/workflows/pages.yml` tests, builds and deploys on every push to `main`.
+`.github/workflows/pages.yml` bakes the data, tests, builds and deploys on every push to `main`
+and when data-sync calls it.
 One-time setup in the GitHub repo: Settings → Pages → Source: **GitHub Actions**.
 The build uses relative asset paths, so it works under any repo name.
 

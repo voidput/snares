@@ -1,10 +1,18 @@
 ---
 title: Changelog
 tags: [changelog]
-updated: 2026-11-24
+updated: 2026-11-26
 ---
 
 # Changelog
+
+## 2026-11-26 — Game data baked at deploy
+
+Type: Changed. Effort: L1.
+
+- Pages bakes `public/data` from the newest sc-gamedata-dumps releases on every deploy (LIVE: latest release, PTU: newest prerelease); no more data commits or data pull requests, which `main`'s required `check` blocked.
+- `data-sync.yml` redeploys daily (skipped when `data/source.json` on the site already shows the same tags and revisions) and when sc-gamedata dispatches it after a publish.
+- The committed `universe*.json` stay as the `npm run dev` fallback, refreshed to LIVE 4.10.201.48085 r4 and PTU 5.0.202.35026 r4.
 
 ## 2026-11-24 — Levski, and PTU data
 
